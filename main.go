@@ -4,31 +4,34 @@ import (
 	"context"
 	"log"
 
+	"./graph"
+	"./model"
 	"./persist"
 )
-
-type RunWithStatement struct {
-	Script     string
-	Executable string
-}
-
-type Rule struct {
-	Name              string
-	Query             *persist.Query
-	ExecutorName      string
-	RequiredResources map[string]float64
-	RunStatements     []*RunWithStatement
-}
 
 type Config struct {
 	Rules     map[string]*Rule
 	Vars      map[string]string
-	Artifacts []propPairs
-	Executors map[string]map[string]string
+	Artifacts []model.PropPairs
+	Executors map[string]Executor
+}
+
+func NewConfig() *Config {
+	c := &Config{Rules: make(map[string]*Rule),
+		Vars:      make(map[string]string),
+		Executors: make(map[string]Executor)}
+
+	// default executor executes jobs locally
+	c.Executors[""] = &LocalExec{}
+
+	return c
+}
+
+func (c *Config) AddRule(rule *Rule) {
+	c.Rules[rule.Name] = rule
 }
 
 type Update struct {
-	resumeState       *string
 	completionState   *CompletionState
 	status            *string
 	ruleApplicationID int
@@ -39,10 +42,6 @@ type execListener struct {
 	c                 chan *Update
 }
 
-func (e *execListener) Started(resumeState string) {
-	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, resumeState: &resumeState}
-}
-
 func (e *execListener) Completed(state *CompletionState) {
 	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, completionState: state}
 }
@@ -51,44 +50,111 @@ func (e *execListener) UpdateStatus(status string) {
 	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, status: &status}
 }
 
-func main(context context.Context) {
-	// load rules into memory
-	gb := NewGraphBuilder()
+func rulesToExecutionPlan(rules map[string]*Rule) *graph.ExecutionPlan {
+	gb := graph.NewGraphBuilder()
+	for _, rule := range rules {
+		for _, queryProps := range rule.GetQueryProps() {
+			gb.AddRuleConsumes(rule.Name, false, queryProps)
+		}
+		for _, outputProps := range rule.GetOutputProps() {
+			gb.AddRuleProduces(rule.Name, outputProps)
+		}
+	}
 	g := gb.Build()
-	db := persist.NewDB()
-	plan := NewExecutionPlan(g)
+	g.Print()
+	plan := graph.ConstructExecutionPlan(g)
+	return plan
+}
 
+func ProcessRule(db *persist.DB, name string, query *persist.Query, startCallback func(id int, name string, inputs *persist.Bindings) string) (int, error) {
+	started := 0
+	var rows []*persist.Bindings
+	if query == nil {
+		rows = []*persist.Bindings{persist.EmptyBinding}
+	} else {
+		rows = persist.ExecuteQuery(db, query)
+	}
+	for _, inputs := range rows {
+		// does this application already exist?
+		application := db.FindAppliedRule(name, inputs)
+		if application != nil {
+			// if it exists, nothing to do
+			continue
+		}
+
+		applicationID := db.GetNextApplicationID()
+		resumeState := startCallback(applicationID, name, inputs)
+		_, err := db.PersistAppliedRule(applicationID, name, inputs, resumeState)
+		if err != nil {
+			return 0, err
+		}
+		started++
+	}
+
+	return started, nil
+}
+
+func generateCommand(rule *Rule, inputs *persist.Bindings) string {
+	if rule.RunStatements != nil {
+		panic("unimplemented")
+	}
+	return "date"
+}
+
+func run(context context.Context, config *Config) {
+	// load rules into memory
+	db := persist.NewDB()
+	plan := rulesToExecutionPlan(config.Rules)
 	listenerUpdates := make(chan *Update)
 
 	getNextCompletion := func() (int, *CompletionState) {
 		for {
 			update := <-listenerUpdates
-			if update.resumeState != nil {
-				log.Printf("ID: %d resumeState: %s", update.ruleApplicationID, update.resumeState)
-			}
+
 			if update.completionState != nil {
 				log.Printf("ID: %d completionState: %v", update.ruleApplicationID, update.completionState)
 				return update.ruleApplicationID, update.completionState
 			}
 			if update.status != nil {
-				log.Printf("ID: %d status: %s", update.ruleApplicationID, update.status)
+				log.Printf("ID: %d status: %s", update.ruleApplicationID, *update.status)
 			}
 		}
 	}
 
-	startCallback := func(id int, name string, inputs *Bindings) string {
+	startCallback := func(id int, name string, inputs *persist.Bindings) string {
 		listener := &execListener{ruleApplicationID: id, c: listenerUpdates}
-		execution := ExecutionFactory.Create()
-		command := generateCommand(execution, name, inputs)
-		execution.Start(context, command, listener)
+		// execution := ExecutionFactory.Create()
+		// command := generateCommand(execution, name, inputs)
+		rule := config.Rules[name]
+		command := generateCommand(rule, inputs)
+
+		if command == "" {
+			plan.Started(name)
+			listener.Completed(&CompletionState{Success: true})
+			return ""
+		}
+		executorName := rule.ExecutorName
+		executor := config.Executors[executorName]
+		process, err := executor.Start(context, []string{command})
+		if err != nil {
+			panic(err)
+		}
+
+		plan.Started(name)
+
+		resumeState := process.GetResumeState()
+		go process.Wait(listener)
+
 		return resumeState
 	}
 
 	running := 0
 
 	processRules := func(next []string) error {
+		log.Printf("processRules called with: %v", next)
 		for _, name := range next {
-			started, err := ProcessRule(db, name, queryByName[name], startCallBack)
+			query := config.Rules[name].Query
+			started, err := ProcessRule(db, name, query, startCallback)
 			if err != nil {
 				return err
 			}
@@ -97,8 +163,9 @@ func main(context context.Context) {
 		return nil
 	}
 
-	nextCompletion := InitialState
+	nextCompletion := graph.InitialState
 	for {
+		log.Printf("completed: %s", nextCompletion)
 		plan.Completed(nextCompletion)
 		next := plan.GetPrioritizedNext()
 		processRules(next)
@@ -109,8 +176,19 @@ func main(context context.Context) {
 			break
 		}
 
-		ruleApplicationID, completionState := getNextCompletion()
+		for {
+			ruleApplicationID, completionState := getNextCompletion()
+			log.Printf("getNextCompletion returned ruleApplicationID=%v, completionState=%v", ruleApplicationID, completionState)
+			if completionState.Success {
+				appliedRule := db.GetAppliedRule(ruleApplicationID)
+				nextCompletion = appliedRule.Name
+				break
+			} else {
+				err := db.DeleteAppliedRule(ruleApplicationID)
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
 	}
-	// complete(Initial)
-	// do mainLoop
 }

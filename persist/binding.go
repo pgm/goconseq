@@ -8,6 +8,8 @@ type Bindings struct {
 	ByName map[string]BindingValue
 }
 
+var EmptyBinding = &Bindings{ByName: make(map[string]BindingValue)}
+
 type MultipleArtifacts struct {
 	artifacts []*Artifact
 }

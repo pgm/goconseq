@@ -1,4 +1,4 @@
-package goconseq
+package graph
 
 import "sort"
 
@@ -52,8 +52,6 @@ type ExecutionPlan struct {
 	runningRules map[string]int
 
 	pendingRules strSet
-
-	fullyInitialized bool
 }
 
 func NewExecutionPlan() *ExecutionPlan {
@@ -72,6 +70,10 @@ func (e *ExecutionPlan) Done() bool {
 }
 
 func (e *ExecutionPlan) AddDependency(precursor string, successor string, waitForAll bool) {
+	if waitForAll {
+		panic("unimplemented")
+	}
+
 	s := e.afterEach[precursor]
 	if s == nil {
 		s = &strSet{}
@@ -90,19 +92,6 @@ func (e *ExecutionPlan) AddDependency(precursor string, successor string, waitFo
 }
 
 func (e *ExecutionPlan) Completed(name string) {
-	if !e.fullyInitialized {
-		// TODO: this logic and all transient relationships into construction of execplan
-
-		// add AfterAll relationships transiently based on forEach relationships
-		for successor, precursors := range e.afterAll {
-			precursors.ForEach(func(precursor string) {
-				e.AddDependency(precursor, successor, false)
-			})
-		}
-
-		e.fullyInitialized = true
-	}
-
 	afterEach := e.afterEach[name]
 	if afterEach != nil {
 		afterEach.ForEach(func(name string) {

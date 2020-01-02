@@ -1,4 +1,4 @@
-package goconseq
+package graph
 
 import (
 	"strings"
@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func parseProps(txts ...string) *propPairs {
-	pps := &propPairs{}
+func parseProps(txts ...string) *PropPairs {
+	pps := &PropPairs{}
 	for _, txt := range txts {
 		pairStr := strings.Split(txt, ":")
 		pp := propPair{pairStr[0], pairStr[1]}

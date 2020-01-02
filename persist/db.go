@@ -1,5 +1,7 @@
 package persist
 
+import "../model"
+
 // stored types: Artifacts, AppliedRules
 
 const InitialStep = 0
@@ -31,6 +33,10 @@ func (db *DB) FindAppliedRule(Name string, Inputs *Bindings) *AppliedRule {
 	return nil
 }
 
+func (db *DB) GetAppliedRule(id int) *AppliedRule {
+	return db.appliedRules[id]
+}
+
 func (db *DB) PersistAppliedRule(ID int, Name string, Inputs *Bindings, ResumeState string) (*AppliedRule, error) {
 	appliedRule := &AppliedRule{id: ID, Name: Name, Inputs: Inputs, ResumeState: ResumeState}
 	db.appliedRules[ID] = appliedRule
@@ -44,8 +50,10 @@ func (db *DB) UpdateAppliedRuleComplete(ID int, Outputs []*Artifact) error {
 	return nil
 }
 
-// func (db *DB) DeleteAppliedRule(ID int) error {
-// }
+func (db *DB) DeleteAppliedRule(ID int) error {
+	delete(db.appliedRules, ID)
+	return nil
+}
 
 // func (db *DB) DeleteArtifact(ID int) error {
 // }
@@ -106,6 +114,18 @@ type QueryBinding struct {
 type Query struct {
 	forEach []*QueryBinding
 	forAll  []*QueryBinding
+}
+
+func (q *Query) GetProps() []*model.PropPairs {
+	result := make([]*model.PropPairs, len(q.forEach))
+	for i, qb := range q.forEach {
+		pp := model.PropPairs{}
+		for name, value := range qb.constantConstraints {
+			pp.Add(model.PropPair{name, value})
+		}
+		result[i] = &pp
+	}
+	return result
 }
 
 func mergeConstraints(original map[string]string,
@@ -172,34 +192,11 @@ func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*Qu
 	return combinedRecords
 }
 
-func executeQuery(db *DB, query *Query) []*Bindings {
+func ExecuteQuery(db *DB, query *Query) []*Bindings {
 	// resolve all forEaches before doing any forAlls
 	placeholders := make(map[string]string)
 	if len(query.forAll) != 0 {
 		panic("forall not implemented")
 	}
 	return _executeQuery(db, placeholders, query.forEach)
-}
-
-func ProcessRule(db *DB, name string, query *Query, startCallback func(id int, name string, inputs *Bindings) string) (int, error) {
-	started := 0
-	rows := executeQuery(db, query)
-	for _, inputs := range rows {
-		// does this application already exist?
-		application := db.FindAppliedRule(name, inputs)
-		if application != nil {
-			// if it exists, nothing to do
-			continue
-		}
-
-		applicationID := db.GetNextApplicationID()
-		resumeState := startCallback(applicationID, name, inputs)
-		_, err := db.PersistAppliedRule(applicationID, name, inputs, resumeState)
-		if err != nil {
-			return 0, err
-		}
-		started++
-	}
-
-	return started, nil
 }

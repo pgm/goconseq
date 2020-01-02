@@ -1,37 +1,10 @@
-package goconseq
+package graph
 
-type propPair struct {
-	name  string
-	value string
-}
+import (
+	"log"
 
-type propPairs struct {
-	//	pairs []*propPair
-	pairSet map[propPair]bool
-}
-
-func (pp *propPairs) Add(pair propPair) {
-	if pp.pairSet == nil {
-		pp.pairSet = make(map[propPair]bool)
-	}
-	_, ok := pp.pairSet[pair]
-	if !ok {
-		pp.pairSet[pair] = true
-	}
-}
-
-func (pp *propPairs) Has(pair propPair) bool {
-	return pp.pairSet[pair]
-}
-
-func (pp *propPairs) Contains(other *propPairs) bool {
-	for pair, _ := range other.pairSet {
-		if !pp.Has(pair) {
-			return false
-		}
-	}
-	return true
-}
+	"../model"
+)
 
 type rule struct {
 	name     string
@@ -45,7 +18,7 @@ type artifactRel struct {
 }
 
 type artifact struct {
-	props      *propPairs
+	props      *model.PropPairs
 	consumedBy []*rule
 	producedBy []*rule
 }
@@ -65,6 +38,38 @@ type Graph struct {
 	roots []*rule
 }
 
+func (g *Graph) ForEachRule(f func(r *rule)) {
+	seen := make(map[*rule]bool)
+	var traverse func(r *rule)
+	traverse = func(r *rule) {
+		seen[r] = true
+		f(r)
+		for _, a := range r.produces {
+			for _, childRule := range a.consumedBy {
+				if !seen[childRule] {
+					traverse(childRule)
+				}
+			}
+		}
+	}
+	for _, rule := range g.roots {
+		traverse(rule)
+	}
+}
+
+func (g *Graph) Print() {
+	printRule := func(r *rule) {
+		log.Printf("rule %s:", r.name)
+		for _, a := range r.consumes {
+			log.Printf("consumes: %p", a)
+		}
+		for _, a := range r.consumes {
+			log.Printf("produces: %p", a)
+		}
+	}
+	g.ForEachRule(printRule)
+}
+
 type artifactIndex struct {
 	// naive implementation. replace with something more efficient
 	artifacts []*artifact
@@ -78,7 +83,7 @@ func (a *artifactIndex) Add(artifact *artifact) {
 	a.artifacts = append(a.artifacts, artifact)
 }
 
-func (a *artifactIndex) Find(queryProps *propPairs) []*artifact {
+func (a *artifactIndex) Find(queryProps *model.PropPairs) []*artifact {
 	matches := make([]*artifact, 0)
 	for _, candidate := range a.artifacts {
 		if candidate.props.Contains(queryProps) {
@@ -129,7 +134,7 @@ func (g *GraphBuilder) Build() *Graph {
 }
 
 // AddRuleConsumes records the given rule consumes the artifacts with the given properties
-func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *propPairs) {
+func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *model.PropPairs) {
 	if _, ok := g.ruleByName[name]; !ok {
 		g.ruleByName[name] = newRule(name)
 	}
@@ -149,7 +154,7 @@ func newRule(name string) *rule {
 }
 
 // AddRuleProduces records the given rule produces artifacts with the given properties
-func (g *GraphBuilder) AddRuleProduces(name string, props *propPairs) {
+func (g *GraphBuilder) AddRuleProduces(name string, props *model.PropPairs) {
 	r, ok := g.ruleByName[name]
 	if !ok {
 		r = newRule(name)
@@ -164,14 +169,18 @@ func (g *GraphBuilder) AddRuleProduces(name string, props *propPairs) {
 func ConstructExecutionPlan(g *Graph) *ExecutionPlan {
 	// TODO: Doesn't support "forall". Revisit considering using "group by" instead of all
 	plan := NewExecutionPlan()
-	for _, rule := range g.roots {
-		for _, artifact := range rule.produces {
-			for _, subsequentRule := range artifact.consumedBy {
-				// precursor string, successor string, waitForAll bool
-				plan.AddDependency(rule.name, subsequentRule.name, false)
+	g.ForEachRule(func(r *rule) {
+		// precursor string, successor string, waitForAll bool
+		if len(r.consumes) == 0 {
+			plan.AddDependency(InitialState, r.name, false)
+		} else {
+			for _, a := range r.consumes {
+				for _, precursor := range a.artifact.producedBy {
+					plan.AddDependency(precursor.name, r.name, false)
+				}
 			}
 		}
-	}
+	})
 	return plan
 }
 

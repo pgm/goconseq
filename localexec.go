@@ -42,11 +42,15 @@ type Execution interface {
 	Wait(listener Listener)
 }
 
+type Localizer interface {
+	Localize(fileId int) (string, error)
+}
+
 type Executor interface {
 	// Starts an execution
 	Start(context context.Context, command []string) (exec Execution, err error)
-	//	Localize(fileId int) (string, error)
 	Resume(resumeState string) (exec Execution, err error)
+	GetLocalizer() Localizer
 }
 
 // Listener is a set of callbacks that will be invoked over the lifespan of Start

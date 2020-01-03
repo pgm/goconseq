@@ -1,6 +1,8 @@
 package persist
 
-import "../model"
+import (
+	"../graph"
+)
 
 // stored types: Artifacts, AppliedRules
 
@@ -58,10 +60,10 @@ func (db *DB) DeleteAppliedRule(ID int) error {
 // func (db *DB) DeleteArtifact(ID int) error {
 // }
 
-func (db *DB) PersistArtifact(ProducedBy int, Properties map[string]string) (*Artifact, error) {
+func (db *DB) PersistArtifact(ProducedBy int, Properties *ArtifactProperties) (*Artifact, error) {
 	id := db.nextArtifactID
 	db.nextArtifactID++
-	artifact := &Artifact{id: id, ProducedBy: ProducedBy, Properties: Properties}
+	artifact := &Artifact{id: id, ProducedBy: ProducedBy, Properties: *Properties}
 	db.artifacts[id] = artifact
 
 	return artifact, nil
@@ -116,12 +118,12 @@ type Query struct {
 	forAll  []*QueryBinding
 }
 
-func (q *Query) GetProps() []*model.PropPairs {
-	result := make([]*model.PropPairs, len(q.forEach))
+func (q *Query) GetProps() []*graph.PropertiesTemplate {
+	result := make([]*graph.PropertiesTemplate, len(q.forEach))
 	for i, qb := range q.forEach {
-		pp := model.PropPairs{}
+		pp := graph.PropertiesTemplate{}
 		for name, value := range qb.constantConstraints {
-			pp.Add(model.PropPair{name, value})
+			pp.AddConstantProperty(name, value)
 		}
 		result[i] = &pp
 	}
@@ -177,7 +179,7 @@ func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*Qu
 		// before invoking next query, record any placeholders based on the current artifact
 		placeholders := copyStrMap(origPlaceholders)
 		for _, assignment := range forEach.placeholderAssignments {
-			placeholders[assignment.second] = artifact.Properties[assignment.first]
+			placeholders[assignment.second] = artifact.Properties.Strings[assignment.first]
 		}
 		records := _executeQuery(db, placeholders, restForEach)
 		for _, record := range records {

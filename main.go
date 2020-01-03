@@ -5,14 +5,13 @@ import (
 	"log"
 
 	"./graph"
-	"./model"
 	"./persist"
 )
 
 type Config struct {
-	Rules     map[string]*Rule
-	Vars      map[string]string
-	Artifacts []model.PropPairs
+	Rules map[string]*Rule
+	Vars  map[string]string
+	//	Artifacts []model.PropPairs
 	Executors map[string]Executor
 }
 
@@ -101,6 +100,10 @@ func generateCommand(rule *Rule, inputs *persist.Bindings) string {
 	return "date"
 }
 
+func localizeArtifact(localizer Localizer, artifact *persist.Artifact) *persist.Artifact {
+	artifact
+}
+
 func run(context context.Context, config *Config) {
 	// load rules into memory
 	db := persist.NewDB()
@@ -126,16 +129,21 @@ func run(context context.Context, config *Config) {
 		// execution := ExecutionFactory.Create()
 		// command := generateCommand(execution, name, inputs)
 		rule := config.Rules[name]
-		command := generateCommand(rule, inputs)
+		executorName := rule.ExecutorName
+		executor := config.Executors[executorName]
+		localizer := executor.GetLocalizer()
+		localizedInputs := inputs.Transform(func(artifact *persist.Artifact) *persist.Artifact {
+			return localizeArtifact(localizer, artifact)
+		})
+		command := generateCommand(rule, localizedInputs)
 
+		// special case: nothing to run for this rule. primarily used by tests
 		if command == "" {
 			plan.Started(name)
 			listener.Completed(&CompletionState{Success: true})
 			return ""
 		}
-		executorName := rule.ExecutorName
-		executor := config.Executors[executorName]
-		process, err := executor.Start(context, []string{command})
+		process, err := executor.Start(context, []string{command}, localizer)
 		if err != nil {
 			panic(err)
 		}

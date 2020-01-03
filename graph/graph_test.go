@@ -7,12 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func parseProps(txts ...string) *PropPairs {
-	pps := &PropPairs{}
+func parseProps(txts ...string) *PropertiesTemplate {
+	pps := &PropertiesTemplate{}
 	for _, txt := range txts {
 		pairStr := strings.Split(txt, ":")
-		pp := propPair{pairStr[0], pairStr[1]}
-		pps.Add(pp)
+		pps.AddConstantProperty(pairStr[0], pairStr[1])
 	}
 	return pps
 }

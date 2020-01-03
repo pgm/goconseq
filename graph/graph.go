@@ -2,8 +2,6 @@ package graph
 
 import (
 	"log"
-
-	"../model"
 )
 
 type rule struct {
@@ -15,12 +13,6 @@ type rule struct {
 type artifactRel struct {
 	isAll    bool
 	artifact *artifact
-}
-
-type artifact struct {
-	props      *model.PropPairs
-	consumedBy []*rule
-	producedBy []*rule
 }
 
 // GraphBuilder is a data structure which is incrementally constructed via Add.. methods and then Build() can be called
@@ -83,7 +75,7 @@ func (a *artifactIndex) Add(artifact *artifact) {
 	a.artifacts = append(a.artifacts, artifact)
 }
 
-func (a *artifactIndex) Find(queryProps *model.PropPairs) []*artifact {
+func (a *artifactIndex) Find(queryProps *PropertiesTemplate) []*artifact {
 	matches := make([]*artifact, 0)
 	for _, candidate := range a.artifacts {
 		if candidate.props.Contains(queryProps) {
@@ -134,7 +126,7 @@ func (g *GraphBuilder) Build() *Graph {
 }
 
 // AddRuleConsumes records the given rule consumes the artifacts with the given properties
-func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *model.PropPairs) {
+func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *PropertiesTemplate) {
 	if _, ok := g.ruleByName[name]; !ok {
 		g.ruleByName[name] = newRule(name)
 	}
@@ -154,7 +146,7 @@ func newRule(name string) *rule {
 }
 
 // AddRuleProduces records the given rule produces artifacts with the given properties
-func (g *GraphBuilder) AddRuleProduces(name string, props *model.PropPairs) {
+func (g *GraphBuilder) AddRuleProduces(name string, props *PropertiesTemplate) {
 	r, ok := g.ruleByName[name]
 	if !ok {
 		r = newRule(name)

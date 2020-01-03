@@ -19,21 +19,21 @@ type Rule struct {
 	RunStatements     []*RunWithStatement
 }
 
-func (r *Rule) GetQueryProps() []*graph.ArtifactTemplate {
+func (r *Rule) GetQueryProps() []*graph.PropertiesTemplate {
 	if r.Query == nil {
 		return nil
 	}
 	return r.Query.GetProps()
 }
 
-func (r *Rule) GetOutputProps() []*graph.ArtifactTemplate {
-	templates := make([]*graph.ArtifactTemplate, 0, len(r.Outputs))
-	for i, output := range r.Outputs {
-		template := graph.ArtifactTemplate{}
+func (r *Rule) GetOutputProps() []*graph.PropertiesTemplate {
+	templates := make([]*graph.PropertiesTemplate, 0, len(r.Outputs))
+	for _, output := range r.Outputs {
+		template := graph.PropertiesTemplate{}
 		for k, v := range output {
-			template.AddConstProperty(k, v)
+			template.AddConstantProperty(k, v)
 		}
-		templates = append(templates, template)
+		templates = append(templates, &template)
 	}
 	return templates
 }

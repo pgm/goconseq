@@ -1,0 +1,5 @@
+#!/bin/bash
+
+exec java -jar ./antlr-4.7.2-complete.jar -Dlanguage=Go "$@"
+
+

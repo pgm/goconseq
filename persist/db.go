@@ -5,14 +5,22 @@ import (
 )
 
 // stored types: Artifacts, AppliedRules
-
+// TODO: Make db threadsafe
 const InitialStep = 0
+
+type File struct {
+	FileID     int
+	LocalPath  string
+	GlobalPath string
+}
 
 type DB struct {
 	nextArtifactID    int
 	nextAppliedRuleID int
+	nextFileID        int
 	artifacts         map[int]*Artifact
 	appliedRules      map[int]*AppliedRule
+	files             map[int]*File
 }
 
 func NewDB() *DB {
@@ -80,6 +88,32 @@ func (db *DB) FindArtifacts(Properties map[string]string) []*Artifact {
 		}
 	}
 	return results
+}
+
+func (db *DB) AddFileGlobalPath(localPath string, globalPath string) *File {
+	fileID := db.nextFileID
+	db.nextFileID++
+	file := &File{FileID: fileID, LocalPath: localPath, GlobalPath: globalPath}
+	db.files[fileID] = file
+	return file
+}
+
+func (db *DB) GetFile(fileID int) *File {
+	return db.files[fileID]
+}
+
+func (db *DB) UpdateFile(fileID int, localPath string, globalPath string) *File {
+	// never mutate, make a copy
+	origFile := db.files[fileID]
+	if localPath == "" {
+		localPath = origFile.LocalPath
+	}
+	if globalPath == "" {
+		globalPath = origFile.GlobalPath
+	}
+	file := &File{FileID: fileID, GlobalPath: globalPath, LocalPath: localPath}
+	db.files[fileID] = file
+	return file
 }
 
 // func (db *DB) FindAppliedRulesByName(name string) (*AppliedRule, error) {

@@ -101,7 +101,18 @@ func generateCommand(rule *Rule, inputs *persist.Bindings) string {
 }
 
 func localizeArtifact(localizer Localizer, artifact *persist.Artifact) *persist.Artifact {
-	artifact
+	var newArtifact persist.Artifact
+	for k, v := range artifact.Properties.Strings {
+		newArtifact.Properties.Strings[k] = v
+	}
+	for k, fileID := range artifact.Properties.Files {
+		localPath, err := localizer.Localize(fileID)
+		if err != nil {
+			panic(err)
+		}
+		newArtifact.Properties.Strings[k] = localPath
+	}
+	return &newArtifact
 }
 
 func run(context context.Context, config *Config) {

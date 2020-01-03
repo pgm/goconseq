@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+
+	"./persist"
 )
 
 type NameValuePair struct {
@@ -48,7 +50,7 @@ type Localizer interface {
 
 type Executor interface {
 	// Starts an execution
-	Start(context context.Context, command []string) (exec Execution, err error)
+	Start(context context.Context, command []string, localizer Localizer) (exec Execution, err error)
 	Resume(resumeState string) (exec Execution, err error)
 	GetLocalizer() Localizer
 }
@@ -85,7 +87,7 @@ func (p *LocalProcess) Wait(listener Listener) {
 }
 
 // Start a process.
-func (e *LocalExec) Start(context context.Context, command []string) (Execution, error) {
+func (e *LocalExec) Start(context context.Context, command []string, localizer Localizer) (Execution, error) {
 	cmd := exec.CommandContext(context, command[0], command[1:]...)
 	// cmd.Stdin = strings.NewReader("some input")
 	// var out bytes.Buffer
@@ -110,6 +112,18 @@ func (e *LocalExec) Resume(resumeState string) (Execution, error) {
 	// 	// according to docs, this should always succeed under unix
 	// 	panic(err)
 	// }
+}
+
+type LocalPathLocalizer struct {
+	db *persist.DB
+}
+
+func (l *LocalPathLocalizer) Localize(fileID int) (string, error) {
+	return l.db.GetFile(fileID).LocalPath, nil
+}
+
+func (e *LocalExec) GetLocalizer() Localizer {
+	return &LocalPathLocalizer{}
 }
 
 func (e *LocalExec) Localize(fileId int) (string, error) {

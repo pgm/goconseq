@@ -1,5 +1,7 @@
 #!/bin/bash
-
-exec java -jar ./antlr-4.7.2-complete.jar -Dlanguage=Go "$@"
+if [ -e antlr-4.7.2-complete.jar ] ; then
+  curl -O https://www.antlr.org/download/antlr-4.7.2-complete.jar
+fi
+exec java -jar ./antlr-4.7.2-complete.jar "$@"
 
 

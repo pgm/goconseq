@@ -123,7 +123,8 @@ func (l *Listener) ExitInput_bindings(ctx *antlrparser.Input_bindingsContext) {
 		variable := l.PopString()
 		bindings[variable] = query
 	}
-	l.Push(bindings)
+	//	l.Push(bindings)
+	l.CurRule.Inputs = bindings
 }
 
 func (l *Listener) ExitAdd_if_missing(ctx *antlrparser.Add_if_missingContext) {

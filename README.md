@@ -5,4 +5,15 @@ does change the nature of how "all"s are evaluated. Each "all" is no longer inde
 Realistically, how often is that needed? I think the most common to use "all" as a way to
 collect a single type of results, not multiple types.
 
-Milestone 1: be able to run with no real persistance, only local executions, and config constructed in go code.
+Milestone 1: be able to run with no real persistance, only local executions, only foreach
+Milestone 2: be able to run with real persistance, only local executions, only foreach
+Milestone 3: be able to run with real persistance, run via delegate, only foreach
+
+rule foo:
+for_each: a, b where a.x = 'z' and a.y = 'z' and b.c = a.c
+with_all: z where z.c = a.c
+with_all: zz where zz.c = a.c
+run "python ..." with "..."
+
+interesting idea:
+delgate which can read from GS

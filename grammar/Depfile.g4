@@ -1,42 +1,24 @@
 grammar Depfile;
 
-// tokens { IDENTIFIER, SHORT_STRING, LONG_STRING, NEWLINE, SPACES }
-
 all_declarations: ( declaration)*;
 
-declaration: var_stmt; //| add_if_missing;
+declaration: var_stmt | add_if_missing | rule_declaration;
 
 /*
  # | rule # | include_stmt # | exec_profile # | remember_executed # | conditional # | eval_statement
  */
-IDENTIFIER: [A-Za-z]+ [A-Za-z0-9_+-]*;
 
-var_stmt: 'let' IDENTIFIER '=' quoted_string;
+rule_declaration: 'rule' IDENTIFIER ':' input_bindings? output?;
 
-// different flavors of strings 
+input_bindings: 'inputs' ':' binding (',' binding)*;
 
-SHORT_STRING:
-	'\'' (STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '\''
-	| '"' ( STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '"';
+binding: IDENTIFIER '=' json_obj;
 
-LONG_STRING:
-	'\'\'\'' LONG_STRING_ITEM*? '\'\'\''
-	| '"""' LONG_STRING_ITEM*? '"""';
+output: 'outputs' ':' json_obj (',' json_obj)*;
 
-LONG_STRING_ITEM: LONG_STRING_CHAR | STRING_ESCAPE_SEQ;
-
-LONG_STRING_CHAR: ~'\\';
-
-STRING_ESCAPE_SEQ: '\\' . | '\\' NEWLINE;
+var_stmt: LET IDENTIFIER EQUALS quoted_string;
 
 quoted_string: LONG_STRING | SHORT_STRING;
-
-COMMENT: '#' ~[\r\n\f]*;
-
-SKIP_: ( COMMENT | SPACES) -> skip;
-
-SPACES: [ \t]+;
-NEWLINE: '\n';
 
 add_if_missing: 'add-if-missing' json_obj;
 
@@ -45,8 +27,33 @@ json_obj:
 
 json_name_value_pair: quoted_string ':' json_value;
 
-json_value: quoted_string | json_obj | json_array;
+json_value: quoted_string; //| json_obj | json_array;
 
-json_array:
-	'['; // json_array: '[' json_value ( ',' json_value)* ','? ']' | '[' ']';
+//json_array: '[' json_value ( ',' json_value)* ','? ']' | '[' ']';
 
+////// lexer
+
+LET: 'let';
+
+EQUALS: '=';
+
+// different flavors of strings 
+SHORT_STRING:
+	'\'' (STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '\''
+	| '"' ( STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '"';
+
+LONG_STRING:
+	'\'\'\'' LONG_STRING_ITEM*? '\'\'\''
+	| '"""' LONG_STRING_ITEM*? '"""';
+
+fragment LONG_STRING_ITEM: LONG_STRING_CHAR | STRING_ESCAPE_SEQ;
+
+fragment LONG_STRING_CHAR: ~'\\';
+
+fragment STRING_ESCAPE_SEQ: '\\' .;
+
+COMMENT: '#' ~[\r\n\f]* -> channel(HIDDEN);
+
+SPACES: [ \t\r\n]+ -> skip;
+
+IDENTIFIER: [A-Za-z]+ [A-Za-z0-9_+-]*;

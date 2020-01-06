@@ -2,7 +2,6 @@ package goconseq
 
 import (
 	"context"
-	"log"
 	"testing"
 )
 
@@ -17,8 +16,6 @@ func TestSimpleSingleRuleRun(t *testing.T) {
 	config.AddRule(&Rule{Name: "r1",
 		Query:   nil,
 		Outputs: []map[string]string{mkstrmap("prop1", "value1")}})
-
-	log.Printf("test")
 	run(context.Background(), config)
 }
 

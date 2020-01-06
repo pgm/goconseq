@@ -167,7 +167,7 @@ func run(context context.Context, config *Config) {
 		return resumeState
 	}
 
-	running := 0
+	running := 1
 
 	processRules := func(next []string) error {
 		log.Printf("processRules called with: %v", next)
@@ -186,6 +186,7 @@ func run(context context.Context, config *Config) {
 	for {
 		log.Printf("completed: %s", nextCompletion)
 		plan.Completed(nextCompletion)
+		running--
 		next := plan.GetPrioritizedNext()
 		processRules(next)
 		next = plan.GetNext()

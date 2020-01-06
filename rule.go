@@ -1,8 +1,8 @@
 package goconseq
 
 import (
-	"./graph"
-	"./persist"
+	"github.com/pgm/goconseq/graph"
+	"github.com/pgm/goconseq/persist"
 )
 
 type RunWithStatement struct {

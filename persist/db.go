@@ -1,7 +1,7 @@
 package persist
 
 import (
-	"../graph"
+	"github.com/pgm/goconseq/graph"
 )
 
 // stored types: Artifacts, AppliedRules

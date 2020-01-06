@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 
-	"./persist"
+	"github.com/pgm/goconseq/persist"
 )
 
 type NameValuePair struct {

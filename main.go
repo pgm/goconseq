@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"./graph"
-	"./persist"
+	"github.com/pgm/goconseq/graph"
+	"github.com/pgm/goconseq/persist"
 )
 
 type Config struct {

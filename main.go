@@ -5,33 +5,12 @@ import (
 	"log"
 
 	"github.com/pgm/goconseq/graph"
+	"github.com/pgm/goconseq/model"
 	"github.com/pgm/goconseq/persist"
 )
 
-type Config struct {
-	Rules map[string]*Rule
-	Vars  map[string]string
-	//	Artifacts []model.PropPairs
-	Executors map[string]Executor
-}
-
-func NewConfig() *Config {
-	c := &Config{Rules: make(map[string]*Rule),
-		Vars:      make(map[string]string),
-		Executors: make(map[string]Executor)}
-
-	// default executor executes jobs locally
-	c.Executors[""] = &LocalExec{}
-
-	return c
-}
-
-func (c *Config) AddRule(rule *Rule) {
-	c.Rules[rule.Name] = rule
-}
-
 type Update struct {
-	completionState   *CompletionState
+	CompletionState   *model.CompletionState
 	status            *string
 	ruleApplicationID int
 }
@@ -41,15 +20,15 @@ type execListener struct {
 	c                 chan *Update
 }
 
-func (e *execListener) Completed(state *CompletionState) {
-	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, completionState: state}
+func (e *execListener) Completed(state *model.CompletionState) {
+	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, CompletionState: state}
 }
 
 func (e *execListener) UpdateStatus(status string) {
 	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, status: &status}
 }
 
-func rulesToExecutionPlan(rules map[string]*Rule) *graph.ExecutionPlan {
+func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 	gb := graph.NewGraphBuilder()
 	for _, rule := range rules {
 		for _, queryProps := range rule.GetQueryProps() {
@@ -93,14 +72,14 @@ func ProcessRule(db *persist.DB, name string, query *persist.Query, startCallbac
 	return started, nil
 }
 
-func generateCommand(rule *Rule, inputs *persist.Bindings) string {
+func generateCommand(rule *model.Rule, inputs *persist.Bindings) string {
 	if rule.RunStatements != nil {
 		panic("unimplemented")
 	}
 	return "date"
 }
 
-func localizeArtifact(localizer Localizer, artifact *persist.Artifact) *persist.Artifact {
+func localizeArtifact(localizer model.Localizer, artifact *persist.Artifact) *persist.Artifact {
 	var newArtifact persist.Artifact
 	for k, v := range artifact.Properties.Strings {
 		newArtifact.Properties.Strings[k] = v
@@ -115,19 +94,19 @@ func localizeArtifact(localizer Localizer, artifact *persist.Artifact) *persist.
 	return &newArtifact
 }
 
-func run(context context.Context, config *Config) {
+func run(context context.Context, config *model.Config) *persist.DB {
 	// load rules into memory
 	db := persist.NewDB()
 	plan := rulesToExecutionPlan(config.Rules)
 	listenerUpdates := make(chan *Update)
 
-	getNextCompletion := func() (int, *CompletionState) {
+	getNextCompletion := func() (int, *model.CompletionState) {
 		for {
 			update := <-listenerUpdates
 
-			if update.completionState != nil {
-				log.Printf("ID: %d completionState: %v", update.ruleApplicationID, update.completionState)
-				return update.ruleApplicationID, update.completionState
+			if update.CompletionState != nil {
+				log.Printf("ID: %d model.CompletionState: %v", update.ruleApplicationID, update.CompletionState)
+				return update.ruleApplicationID, update.CompletionState
 			}
 			if update.status != nil {
 				log.Printf("ID: %d status: %s", update.ruleApplicationID, *update.status)
@@ -151,7 +130,7 @@ func run(context context.Context, config *Config) {
 		// special case: nothing to run for this rule. primarily used by tests
 		if command == "" {
 			plan.Started(name)
-			listener.Completed(&CompletionState{Success: true})
+			listener.Completed(&model.CompletionState{Success: true})
 			return ""
 		}
 		process, err := executor.Start(context, []string{command}, localizer)
@@ -197,9 +176,9 @@ func run(context context.Context, config *Config) {
 		}
 
 		for {
-			ruleApplicationID, completionState := getNextCompletion()
-			log.Printf("getNextCompletion returned ruleApplicationID=%v, completionState=%v", ruleApplicationID, completionState)
-			if completionState.Success {
+			ruleApplicationID, CompletionState := getNextCompletion()
+			log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, CompletionState)
+			if CompletionState.Success {
 				appliedRule := db.GetAppliedRule(ruleApplicationID)
 				nextCompletion = appliedRule.Name
 				break
@@ -211,4 +190,6 @@ func run(context context.Context, config *Config) {
 			}
 		}
 	}
+
+	return db
 }

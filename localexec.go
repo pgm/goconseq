@@ -7,13 +7,9 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/pgm/goconseq/model"
 	"github.com/pgm/goconseq/persist"
 )
-
-type NameValuePair struct {
-	Name  string
-	Value string
-}
 
 type Files interface {
 	// given a fileId, return a path to that file which we can use locally
@@ -27,45 +23,11 @@ type LocalExec struct {
 	files Files
 }
 
-type CompletionState struct {
-	Success bool
-
-	// populated if !Success
-	FailureMessage string
-	FailureLogs    []*NameValuePair
-
-	// non-nil only if process successfully started
-	ProcessState *os.ProcessState
-}
-
-type Execution interface {
-	GetResumeState() string
-	// a blocking call which will wait until execution completes
-	Wait(listener Listener)
-}
-
-type Localizer interface {
-	Localize(fileId int) (string, error)
-}
-
-type Executor interface {
-	// Starts an execution
-	Start(context context.Context, command []string, localizer Localizer) (exec Execution, err error)
-	Resume(resumeState string) (exec Execution, err error)
-	GetLocalizer() Localizer
-}
-
-// Listener is a set of callbacks that will be invoked over the lifespan of Start
-type Listener interface {
-	Completed(state *CompletionState)
-	UpdateStatus(status string)
-}
-
 type LocalProcess struct {
 	process *os.Process
 }
 
-func (p *LocalProcess) Wait(listener Listener) {
+func (p *LocalProcess) Wait(listener model.Listener) {
 	listener.UpdateStatus("Executing")
 
 	// attempt to wait directly, but this will fail if we're not the parent process
@@ -83,11 +45,11 @@ func (p *LocalProcess) Wait(listener Listener) {
 	// }
 
 	log.Printf("todo: implement failure check")
-	listener.Completed(&CompletionState{Success: true})
+	listener.Completed(&model.CompletionState{Success: true})
 }
 
 // Start a process.
-func (e *LocalExec) Start(context context.Context, command []string, localizer Localizer) (Execution, error) {
+func (e *LocalExec) Start(context context.Context, command []string, localizer model.Localizer) (model.Execution, error) {
 	cmd := exec.CommandContext(context, command[0], command[1:]...)
 	// cmd.Stdin = strings.NewReader("some input")
 	// var out bytes.Buffer
@@ -105,7 +67,7 @@ func (e *LocalProcess) GetResumeState() string {
 	return fmt.Sprintf("%d", e.process.Pid)
 }
 
-func (e *LocalExec) Resume(resumeState string) (Execution, error) {
+func (e *LocalExec) Resume(resumeState string) (model.Execution, error) {
 	panic("unimp")
 	// process, err := os.FindProcess()
 	// if err != nil {
@@ -122,7 +84,7 @@ func (l *LocalPathLocalizer) Localize(fileID int) (string, error) {
 	return l.db.GetFile(fileID).LocalPath, nil
 }
 
-func (e *LocalExec) GetLocalizer() Localizer {
+func (e *LocalExec) GetLocalizer() model.Localizer {
 	return &LocalPathLocalizer{}
 }
 

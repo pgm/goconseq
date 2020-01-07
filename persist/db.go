@@ -236,3 +236,24 @@ func ExecuteQuery(db *DB, query *Query) []*Bindings {
 	}
 	return _executeQuery(db, placeholders, query.forEach)
 }
+
+func QueryFromMaps(bindMap map[string]map[string]string) *Query {
+	var query Query
+
+	for name, template := range bindMap {
+		binding := &QueryBinding{bindingVariable: name,
+			constantConstraints: template}
+		// bindingVariable string
+		// // the static constraints to use when querying
+		// constantConstraints map[string]string
+		// // the variable constraints to use when querying. Each of these will reference a field from a prior variable definition
+		// placeholderConstraints []StringPair
+		// placeholderAssignments []StringPair
+
+		// for k, v := template {
+		// }
+		query.forEach = append(query.forEach, binding)
+	}
+
+	return &query
+}

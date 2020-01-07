@@ -3,6 +3,11 @@ package goconseq
 import (
 	"context"
 	"testing"
+
+	"github.com/pgm/goconseq/model"
+	"github.com/pgm/goconseq/parser"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func mkstrmap(name string, value string) map[string]string {
@@ -12,23 +17,46 @@ func mkstrmap(name string, value string) map[string]string {
 }
 
 func TestSimpleSingleRuleRun(t *testing.T) {
-	config := NewConfig()
-	config.AddRule(&Rule{Name: "r1",
+	config := model.NewConfig(&LocalExec{})
+	config.AddRule(&model.Rule{Name: "r1",
 		Query:   nil,
 		Outputs: []map[string]string{mkstrmap("prop1", "value1")}})
-	run(context.Background(), config)
+	db := run(context.Background(), config)
+	artifacts := db.FindArtifacts(map[string]string{})
+	assert.Equal(t, 1, len(artifacts))
 }
 
-// func TestRun3RuleChain(t *testing.T) {
-// 	config := NewConfig()
-// 	config.AddRule(&Rule{Name: "r1",
-// 		Query:   nil,
-// 		Outputs: []map[string]string{map[string]string{"prop": "1", "type": "a1"}, map[string]string{"prop": "2", "type": "a2"}}})
-// 	config.AddRule(&Rule{Name: "r2",
-// 		Query: &persist.Query{forEach: []*persist.QueryBinding{
-// 			&persist.QueryBinding{bindingVariable: "in", constantConstraints: map[string]string{"type": "a1"}}}},
-// 		Outputs: []map[string]string{mkstrmap("type", "a2")}})
+func parseRules(rules string) *model.Config {
+	config := model.NewConfig(&LocalExec{})
+	statements, err := parser.ParseString(rules)
+	if err != nil {
+		panic(err)
+	}
+	statements.Eval(config)
+	return config
+}
 
-// 	log.Printf("test")
-// 	run(context.Background(), config)
-// }
+func TestRun3RuleChain(t *testing.T) {
+	config := parseRules(`
+		rule a:
+			outputs: {'type': 'a-out'}
+			run: 'date'
+
+		rule x:
+			inputs: a={'type': 'a-out'}
+			outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
+			run: 'date'
+
+		rule y:
+			inputs: in={'type': 'x-out'}
+			outputs: {'type': 'y-out'}
+			run: 'date'
+	`)
+	db := run(context.Background(), config)
+	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+	xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
+	yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
+	assert.Equal(t, 1, len(aOut))
+	assert.Equal(t, 2, len(xOut))
+	assert.Equal(t, 2, len(yOut))
+}

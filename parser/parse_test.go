@@ -6,6 +6,7 @@ import (
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 
+	"github.com/pgm/goconseq/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,8 +15,8 @@ func TestParseLetStatement(t *testing.T) {
 	stmts, err := ParseString("let x = 'a'")
 	assert.Nil(t, err)
 	assert.Equal(t, len(stmts.Statements), 1)
-	config := Config{Vars: make(map[string]string)}
-	stmts.Eval(&config)
+	config := model.NewConfig(nil)
+	stmts.Eval(config)
 	assert.Equal(t, config.Vars["x"], "a")
 }
 

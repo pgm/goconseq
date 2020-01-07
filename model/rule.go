@@ -1,4 +1,4 @@
-package goconseq
+package model
 
 import (
 	"github.com/pgm/goconseq/graph"

@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/pgm/goconseq/model"
-	"github.com/pgm/goconseq/parser"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,23 +15,25 @@ func mkstrmap(name string, value string) map[string]string {
 }
 
 func TestSimpleSingleRuleRun(t *testing.T) {
-	config := model.NewConfig(&LocalExec{})
-	config.AddRule(&model.Rule{Name: "r1",
-		Query:   nil,
-		Outputs: []map[string]string{mkstrmap("prop1", "value1")}})
-	db := run(context.Background(), config)
-	artifacts := db.FindArtifacts(map[string]string{})
-	assert.Equal(t, 1, len(artifacts))
+	panic("broken")
+	// config := model.NewConfig(&LocalExec{})
+	// config.AddRule(&model.Rule{Name: "r1",
+	// 	Query:   nil,
+	// 	Outputs: []map[string]string{mkstrmap("prop1", "value1")}})
+	// db := run(context.Background(), config)
+	// artifacts := db.FindArtifacts(map[string]string{})
+	// assert.Equal(t, 1, len(artifacts))
 }
 
 func parseRules(rules string) *model.Config {
-	config := model.NewConfig(&LocalExec{})
-	statements, err := parser.ParseString(rules)
-	if err != nil {
-		panic(err)
-	}
-	statements.Eval(config)
-	return config
+	panic("broken")
+	// config := model.NewConfig(&LocalExec{})
+	// statements, err := parser.ParseString(rules)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// statements.Eval(config)
+	// return config
 }
 
 func TestRun3RuleChain(t *testing.T) {

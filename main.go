@@ -79,7 +79,7 @@ func generateCommand(rule *model.Rule, inputs *persist.Bindings) string {
 	return "date"
 }
 
-func localizeArtifact(localizer model.Localizer, artifact *persist.Artifact) *persist.Artifact {
+func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifact) *persist.Artifact {
 	var newArtifact persist.Artifact
 	for k, v := range artifact.Properties.Strings {
 		newArtifact.Properties.Strings[k] = v
@@ -121,9 +121,9 @@ func run(context context.Context, config *model.Config) *persist.DB {
 		rule := config.Rules[name]
 		executorName := rule.ExecutorName
 		executor := config.Executors[executorName]
-		localizer := executor.GetLocalizer()
+		builder := executor.Builder()
 		localizedInputs := inputs.Transform(func(artifact *persist.Artifact) *persist.Artifact {
-			return localizeArtifact(localizer, artifact)
+			return localizeArtifact(builder, artifact)
 		})
 		command := generateCommand(rule, localizedInputs)
 
@@ -133,7 +133,7 @@ func run(context context.Context, config *model.Config) *persist.DB {
 			listener.Completed(&model.CompletionState{Success: true})
 			return ""
 		}
-		process, err := executor.Start(context, []string{command}, localizer)
+		process, err := builder.Start(context)
 		if err != nil {
 			panic(err)
 		}

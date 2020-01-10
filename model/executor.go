@@ -27,15 +27,24 @@ type Execution interface {
 	Wait(listener Listener)
 }
 
-type Localizer interface {
+type RunWith struct {
+	Command string
+	Body    string
+}
+
+type ExecutionBuilder interface {
 	Localize(fileId int) (string, error)
+	AddFile(body []byte) (string, error)
+
+	Prepare(stmts []*RunWith) error
+
+	Start(context context.Context) (exec Execution, err error)
 }
 
 type Executor interface {
 	// Starts an execution
-	Start(context context.Context, command []string, localizer Localizer) (exec Execution, err error)
 	Resume(resumeState string) (exec Execution, err error)
-	GetLocalizer() Localizer
+	Builder() ExecutionBuilder
 }
 
 // Listener is a set of callbacks that will be invoked over the lifespan of Start

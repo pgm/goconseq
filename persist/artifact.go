@@ -11,6 +11,10 @@ type Artifact struct {
 	Properties ArtifactProperties
 }
 
+func NewArtifactProperties() *ArtifactProperties {
+	return &ArtifactProperties{Strings: map[string]string{}, Files: map[string]int{}}
+}
+
 func (a *Artifact) HasProperties(props map[string]string) bool {
 	for k, v := range props {
 		if a.Properties.Strings[k] != v {

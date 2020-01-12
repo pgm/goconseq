@@ -47,7 +47,7 @@ func parseQuotedString(s string) string {
 
 func (l *Listener) EnterRule_declaration(ctx *antlrparser.Rule_declarationContext) {
 	name := ctx.IDENTIFIER().GetText()
-	l.CurRule = &RuleStatement{Name: name}
+	l.CurRule = &RuleStatement{Name: name, ExecutorName: model.DefaultExecutorName}
 	l.Statements.Add(l.CurRule)
 }
 

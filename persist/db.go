@@ -1,6 +1,9 @@
 package persist
 
 import (
+	"fmt"
+	"path"
+
 	"github.com/pgm/goconseq/graph"
 )
 
@@ -21,16 +24,21 @@ type DB struct {
 	artifacts         map[int]*Artifact
 	appliedRules      map[int]*AppliedRule
 	files             map[int]*File
+	stateDir          string
 }
 
-func NewDB() *DB {
-	return &DB{artifacts: make(map[int]*Artifact), appliedRules: make(map[int]*AppliedRule)}
+func NewDB(stateDir string) *DB {
+	return &DB{artifacts: make(map[int]*Artifact), appliedRules: make(map[int]*AppliedRule), stateDir: stateDir}
 }
 
 func (db *DB) GetNextApplicationID() int {
 	ID := db.nextAppliedRuleID
 	db.nextAppliedRuleID++
 	return ID
+}
+
+func (db *DB) GetWorkDir(appliedRuleID int) string {
+	return path.Join(db.stateDir, fmt.Sprintf("r%d", appliedRuleID))
 }
 
 // all _read_ operations do not return errors because they only use memory. All _write_ operations return an error

@@ -2,7 +2,11 @@ package goconseq
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"log"
+	"os"
+	"path"
 
 	"github.com/pgm/goconseq/graph"
 	"github.com/pgm/goconseq/model"
@@ -44,7 +48,10 @@ func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 	return plan
 }
 
-func ProcessRule(db *persist.DB, name string, query *persist.Query, startCallback func(id int, name string, inputs *persist.Bindings) string) (int, error) {
+func ProcessRule(db *persist.DB,
+	name string,
+	query *persist.Query,
+	startCallback func(id int, name string, inputs *persist.Bindings) string) (int, error) {
 	started := 0
 	var rows []*persist.Bindings
 	if query == nil {
@@ -94,9 +101,8 @@ func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifa
 	return &newArtifact
 }
 
-func run(context context.Context, config *model.Config) *persist.DB {
+func run(context context.Context, config *model.Config, db *persist.DB) {
 	// load rules into memory
-	db := persist.NewDB()
 	plan := rulesToExecutionPlan(config.Rules)
 	listenerUpdates := make(chan *Update)
 
@@ -121,7 +127,7 @@ func run(context context.Context, config *model.Config) *persist.DB {
 		rule := config.Rules[name]
 		executorName := rule.ExecutorName
 		executor := config.Executors[executorName]
-		builder := executor.Builder()
+		builder := executor.Builder(id)
 		localizedInputs := inputs.Transform(func(artifact *persist.Artifact) *persist.Artifact {
 			return localizeArtifact(builder, artifact)
 		})
@@ -176,13 +182,48 @@ func run(context context.Context, config *model.Config) *persist.DB {
 		}
 
 		for {
-			ruleApplicationID, CompletionState := getNextCompletion()
-			log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, CompletionState)
-			if CompletionState.Success {
+			ruleApplicationID, completionState := getNextCompletion()
+			log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
+			success := completionState.Success
+
+			var failureMessage string
+			var outputs []*persist.ArtifactProperties
+
+			if success {
+				// attempt to parse the results
+				var err error
+				outputs, err = readResultOutputs(db.GetWorkDir(ruleApplicationID), func(filename string) (int, error) {
+					panic("unimp")
+				})
+				if err != nil {
+					success = false
+					failureMessage = err.Error()
+				}
+			} else {
+				failureMessage = completionState.FailureMessage
+			}
+
+			if success {
+				// write all of the artifacts to the DB
+				outputArtifacts := make([]*persist.Artifact, len(outputs))
+				for i, props := range outputs {
+					artifact, err := db.PersistArtifact(ruleApplicationID, props)
+					if err != nil {
+						panic(err)
+					}
+					outputArtifacts[i] = artifact
+				}
+
+				// mark applied rule as complete
+				db.UpdateAppliedRuleComplete(ruleApplicationID, outputArtifacts)
+
+				// notify the scheduler that this rule completed
 				appliedRule := db.GetAppliedRule(ruleApplicationID)
 				nextCompletion = appliedRule.Name
 				break
 			} else {
+				log.Printf("Error: %s", failureMessage)
+
 				err := db.DeleteAppliedRule(ruleApplicationID)
 				if err != nil {
 					panic(err)
@@ -190,6 +231,64 @@ func run(context context.Context, config *model.Config) *persist.DB {
 			}
 		}
 	}
+}
 
-	return db
+func readResultOutputs(workDir string, getFileID func(filename string) (int, error)) (Properties []*persist.ArtifactProperties, err error) {
+	data, err := readJson(path.Join(workDir, "results.json"), getFileID)
+	if err != nil {
+		return nil, err
+	}
+
+	// todo, add checks for each of these
+	m := data.(map[string]interface{})
+	outputs := m["outputs"].([]interface{})
+	artifacts := make([]*persist.ArtifactProperties, len(outputs))
+	for i, output := range outputs {
+		artifacts[i] = artifactPropsFromJson(output, getFileID)
+	}
+
+	return artifacts, nil
+}
+
+func readJson(filename string, getFileID func(filename string) (int, error)) (interface{}, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	var data interface{}
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func artifactPropsFromJson(json interface{}, getFileID func(filename string) (int, error)) *persist.ArtifactProperties {
+	jsonObj := json.(map[string]interface{})
+	artifact := persist.NewArtifactProperties()
+	for key, value := range jsonObj {
+		valueMap, ok := value.(map[string]interface{})
+		if ok {
+			filename := valueMap["$filename"].(string)
+			fileID, err := getFileID(filename)
+			if err != nil {
+				// todo: gracefully handle errors
+				panic(err)
+			}
+			// todo: check for dup key
+			artifact.Files[key] = fileID
+		} else {
+			// todo: check for dup key
+			artifact.Strings[key] = value.(string)
+		}
+	}
+	return artifact
 }

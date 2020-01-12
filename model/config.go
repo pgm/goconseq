@@ -5,15 +5,13 @@ type Config struct {
 	Vars  map[string]string
 	//	Artifacts []model.PropPairs
 	Executors map[string]Executor
+	StateDir  string
 }
 
-func NewConfig(defaultExecutor Executor) *Config {
+func NewConfig() *Config {
 	c := &Config{Rules: make(map[string]*Rule),
 		Vars:      make(map[string]string),
 		Executors: make(map[string]Executor)}
-
-	// default executor executes jobs locally
-	c.Executors[""] = defaultExecutor
 
 	return c
 }

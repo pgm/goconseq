@@ -2,9 +2,13 @@ package goconseq
 
 import (
 	"context"
+	"io/ioutil"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/pgm/goconseq/model"
+	"github.com/pgm/goconseq/persist"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,15 +18,89 @@ func mkstrmap(name string, value string) map[string]string {
 	return pps
 }
 
+type MockExecutor struct {
+	db         *persist.DB
+	resultBody string
+}
+
+type MockExecutionBuilder struct {
+	executor *MockExecutor
+	id       int
+}
+
+type MockExecution struct {
+	executor *MockExecutor
+	id       int
+}
+
+func (m *MockExecutor) Resume(resumeState string) (exec model.Execution, err error) {
+	panic("unimp")
+}
+
+func (m *MockExecutor) Builder(id int) model.ExecutionBuilder {
+	return &MockExecutionBuilder{executor: m, id: id}
+}
+
+func (m *MockExecutionBuilder) Localize(fileId int) (string, error) {
+	panic("unimp")
+}
+
+func (m *MockExecutionBuilder) AddFile(body []byte) (string, error) {
+	panic("unimp")
+}
+
+func (m *MockExecutionBuilder) Prepare(stmts []*model.RunWith) error {
+	workDir := m.executor.db.GetWorkDir(m.id)
+	os.MkdirAll(workDir, os.ModePerm)
+	panic("unimp")
+}
+
+func (m *MockExecutionBuilder) Start(context context.Context) (exec model.Execution, err error) {
+	return &MockExecution{executor: m.executor, id: m.id}, nil
+}
+
+func (m *MockExecution) GetResumeState() string {
+	return ""
+}
+
+func (m *MockExecution) Wait(listener model.Listener) {
+	listener.UpdateStatus("executing")
+	workDir := m.executor.db.GetWorkDir(m.id)
+	os.MkdirAll(workDir, os.ModePerm)
+	file, err := os.Create(path.Join(workDir, "results.json"))
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	_, err = file.Write([]byte(m.executor.resultBody))
+	if err != nil {
+		panic(err)
+	}
+
+	listener.Completed(&model.CompletionState{Success: true})
+}
+
 func TestSimpleSingleRuleRun(t *testing.T) {
-	panic("broken")
-	// config := model.NewConfig(&LocalExec{})
-	// config.AddRule(&model.Rule{Name: "r1",
-	// 	Query:   nil,
-	// 	Outputs: []map[string]string{mkstrmap("prop1", "value1")}})
-	// db := run(context.Background(), config)
-	// artifacts := db.FindArtifacts(map[string]string{})
-	// assert.Equal(t, 1, len(artifacts))
+	stateDir, err := ioutil.TempDir("", "TestSimpleSingleRuleRun")
+	if err != nil {
+		panic(err)
+	}
+
+	config := model.NewConfig()
+	config.StateDir = stateDir
+	config.AddRule(&model.Rule{Name: "r1",
+		Query: nil,
+		// todo: rules without any defined outputs appear to not be included in graph?
+		// todo add support for ExpectedOutput
+		ExpectedOutput: ...
+		//		Outputs:      []map[string]string{mkstrmap("prop1", "value1")},
+		ExecutorName: model.DefaultExecutorName})
+	db := persist.NewDB(stateDir)
+	config.Executors[model.DefaultExecutorName] = &MockExecutor{db: db, resultBody: `{"outputs": [{"prop": "value"}]}`}
+
+	run(context.Background(), config, db)
+	artifacts := db.FindArtifacts(map[string]string{})
+	assert.Equal(t, 1, len(artifacts))
 }
 
 func parseRules(rules string) *model.Config {
@@ -37,26 +115,28 @@ func parseRules(rules string) *model.Config {
 }
 
 func TestRun3RuleChain(t *testing.T) {
-	config := parseRules(`
-		rule a:
-			outputs: {'type': 'a-out'}
-			run: 'date'
+	panic("Broken")
+	// config := parseRules(`
+	// 	rule a:
+	// 		outputs: {'type': 'a-out'}
+	// 		run: 'date'
 
-		rule x:
-			inputs: a={'type': 'a-out'}
-			outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
-			run: 'date'
+	// 	rule x:
+	// 		inputs: a={'type': 'a-out'}
+	// 		outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
+	// 		run: 'date'
 
-		rule y:
-			inputs: in={'type': 'x-out'}
-			outputs: {'type': 'y-out'}
-			run: 'date'
-	`)
-	db := run(context.Background(), config)
-	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
-	xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
-	yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
-	assert.Equal(t, 1, len(aOut))
-	assert.Equal(t, 2, len(xOut))
-	assert.Equal(t, 2, len(yOut))
+	// 	rule y:
+	// 		inputs: in={'type': 'x-out'}
+	// 		outputs: {'type': 'y-out'}
+	// 		run: 'date'
+	// `)
+	// db := persist.NewDB()
+	// run(context.Background(), config, db)
+	// aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+	// xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
+	// yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
+	// assert.Equal(t, 1, len(aOut))
+	// assert.Equal(t, 2, len(xOut))
+	// assert.Equal(t, 2, len(yOut))
 }

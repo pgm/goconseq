@@ -12,9 +12,9 @@ import (
 // 	antlrparser.BaseDepfileVisitor
 // }
 
-type Config struct {
-	Vars map[string]string
-}
+// type Config struct {
+// 	Vars map[string]string
+// }
 
 // func (v *Visitor) VisitQuoted_string(ctx *antlrparser.Quoted_stringContext) interface{} {
 // 	log.Printf("VisitQuoted_string %v", ctx)

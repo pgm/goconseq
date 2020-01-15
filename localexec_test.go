@@ -52,8 +52,8 @@ func TestLocalExec(t *testing.T) {
 		jobDir: jobDir}
 
 	b := l.Builder(100)
-	b.Prepare([]*model.RunWith{&model.RunWith{"date", ""},
-		&model.RunWith{"echo hello > " + breadcrumb, ""}})
+	b.Prepare([]*model.RunWithStatement{&model.RunWithStatement{Executable: "date"},
+		&model.RunWithStatement{Executable: "echo hello > " + breadcrumb}})
 
 	// make sure the breadcrumb file does not exist
 	_, err = os.Stat(breadcrumb)

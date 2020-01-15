@@ -10,9 +10,20 @@ type RunWithStatement struct {
 	Executable string
 }
 
+type TemplateProperty struct {
+	Name    string
+	Value   string
+	NoValue bool
+}
+
+type QueryTemplate struct {
+	Properties []*TemplateProperty
+}
+
 type Rule struct {
 	Name              string
 	Query             *persist.Query
+	ExpectedOutputs   []*QueryTemplate
 	Outputs           []map[string]string
 	ExecutorName      string
 	RequiredResources map[string]float64
@@ -27,13 +38,27 @@ func (r *Rule) GetQueryProps() []*graph.PropertiesTemplate {
 }
 
 func (r *Rule) GetOutputProps() []*graph.PropertiesTemplate {
-	templates := make([]*graph.PropertiesTemplate, 0, len(r.Outputs))
-	for _, output := range r.Outputs {
-		template := graph.PropertiesTemplate{}
-		for k, v := range output {
-			template.AddConstantProperty(k, v)
+	templates := make([]*graph.PropertiesTemplate, 0, len(r.Outputs)+len(r.ExpectedOutputs))
+
+	if r.Outputs != nil {
+		for _, output := range r.Outputs {
+			template := graph.PropertiesTemplate{}
+			for k, v := range output {
+				template.AddConstantProperty(k, v)
+			}
+			templates = append(templates, &template)
 		}
-		templates = append(templates, &template)
+	} else {
+		for _, inTemplate := range r.ExpectedOutputs {
+			template := graph.PropertiesTemplate{}
+			for _, prop := range inTemplate.Properties {
+				if !prop.NoValue {
+					template.AddConstantProperty(prop.Name, prop.Value)
+				}
+			}
+			templates = append(templates, &template)
+		}
 	}
+
 	return templates
 }

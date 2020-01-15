@@ -98,8 +98,8 @@ func (g *GraphBuilder) Build() *Graph {
 
 	// then for each consume relationship, find all matching artifacts and update the rule's consumes list
 	for name, r := range g.ruleByName {
-		rels, ok := g.consumeRels[name]
-		if !ok {
+		rels := g.consumeRels[name]
+		if len(rels) == 0 {
 			roots = append(roots, r)
 		} else {
 			for _, rel := range rels {
@@ -125,16 +125,16 @@ func (g *GraphBuilder) Build() *Graph {
 	return &Graph{roots}
 }
 
-// AddRuleConsumes records the given rule consumes the artifacts with the given properties
-func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *PropertiesTemplate) {
+func (g *GraphBuilder) AddRule(name string) {
 	if _, ok := g.ruleByName[name]; !ok {
 		g.ruleByName[name] = newRule(name)
+		g.consumeRels[name] = make([]*artifactRel, 0, 1)
 	}
+}
 
-	rels, ok := g.consumeRels[name]
-	if !ok {
-		rels = make([]*artifactRel, 0, 1)
-	}
+// AddRuleConsumes records the given rule consumes the artifacts with the given properties
+func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *PropertiesTemplate) {
+	rels := g.consumeRels[name]
 	g.consumeRels[name] = append(rels, &artifactRel{
 		isAll:    isAll,
 		artifact: &artifact{props: props}})
@@ -147,11 +147,7 @@ func newRule(name string) *rule {
 
 // AddRuleProduces records the given rule produces artifacts with the given properties
 func (g *GraphBuilder) AddRuleProduces(name string, props *PropertiesTemplate) {
-	r, ok := g.ruleByName[name]
-	if !ok {
-		r = newRule(name)
-		g.ruleByName[name] = r
-	}
+	r := g.ruleByName[name]
 	r.produces = append(r.produces, &artifact{
 		props:      props,
 		consumedBy: make([]*rule, 0, 1),

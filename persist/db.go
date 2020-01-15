@@ -18,6 +18,8 @@ type File struct {
 }
 
 type DB struct {
+	// todo: make DB methods threadsafe
+
 	nextArtifactID    int
 	nextAppliedRuleID int
 	nextFileID        int
@@ -160,6 +162,10 @@ type Query struct {
 	forAll  []*QueryBinding
 }
 
+func (q *Query) IsEmpty() bool {
+	return len(q.forEach) == 0 && len(q.forAll) == 0
+}
+
 func (q *Query) GetProps() []*graph.PropertiesTemplate {
 	result := make([]*graph.PropertiesTemplate, len(q.forEach))
 	for i, qb := range q.forEach {
@@ -241,6 +247,9 @@ func ExecuteQuery(db *DB, query *Query) []*Bindings {
 	placeholders := make(map[string]string)
 	if len(query.forAll) != 0 {
 		panic("forall not implemented")
+	}
+	if len(query.forAll) == 0 {
+		panic("need at least one foreach")
 	}
 	return _executeQuery(db, placeholders, query.forEach)
 }

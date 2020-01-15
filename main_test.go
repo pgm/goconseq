@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/pgm/goconseq/model"
+	"github.com/pgm/goconseq/parser"
 	"github.com/pgm/goconseq/persist"
 	"github.com/stretchr/testify/assert"
 )
@@ -49,7 +50,7 @@ func (m *MockExecutionBuilder) AddFile(body []byte) (string, error) {
 	panic("unimp")
 }
 
-func (m *MockExecutionBuilder) Prepare(stmts []*model.RunWith) error {
+func (m *MockExecutionBuilder) Prepare(stmts []*model.RunWithStatement) error {
 	workDir := m.executor.db.GetWorkDir(m.id)
 	os.MkdirAll(workDir, os.ModePerm)
 	panic("unimp")
@@ -92,7 +93,9 @@ func TestSimpleSingleRuleRun(t *testing.T) {
 		Query: nil,
 		// todo: rules without any defined outputs appear to not be included in graph?
 		// todo add support for ExpectedOutput
-		ExpectedOutput: ...
+		ExpectedOutputs: []*model.QueryTemplate{
+			&model.QueryTemplate{
+				[]*model.TemplateProperty{&model.TemplateProperty{Name: "prop", Value: "value"}}}},
 		//		Outputs:      []map[string]string{mkstrmap("prop1", "value1")},
 		ExecutorName: model.DefaultExecutorName})
 	db := persist.NewDB(stateDir)
@@ -103,40 +106,47 @@ func TestSimpleSingleRuleRun(t *testing.T) {
 	assert.Equal(t, 1, len(artifacts))
 }
 
-func parseRules(rules string) *model.Config {
-	panic("broken")
-	// config := model.NewConfig(&LocalExec{})
-	// statements, err := parser.ParseString(rules)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// statements.Eval(config)
-	// return config
+func parseRules(stateDir string, rules string) (*persist.DB, *model.Config) {
+	config := model.NewConfig()
+	config.StateDir = stateDir
+	db := persist.NewDB(stateDir)
+	config.Executors[model.DefaultExecutorName] = &MockExecutor{db: db, resultBody: `{"outputs": [{"prop": "value"}]}`}
+
+	statements, err := parser.ParseString(rules)
+	if err != nil {
+		panic(err)
+	}
+	statements.Eval(config)
+	return db, config
 }
 
 func TestRun3RuleChain(t *testing.T) {
-	panic("Broken")
-	// config := parseRules(`
-	// 	rule a:
-	// 		outputs: {'type': 'a-out'}
-	// 		run: 'date'
+	stateDir, err := ioutil.TempDir("", "TestSimpleSingleRuleRun")
+	if err != nil {
+		panic(err)
+	}
 
-	// 	rule x:
-	// 		inputs: a={'type': 'a-out'}
-	// 		outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
-	// 		run: 'date'
+	db, config := parseRules(stateDir, `
+		rule a:
+			outputs: {'type': 'a-out'}
+			run 'date'
 
-	// 	rule y:
-	// 		inputs: in={'type': 'x-out'}
-	// 		outputs: {'type': 'y-out'}
-	// 		run: 'date'
-	// `)
-	// db := persist.NewDB()
-	// run(context.Background(), config, db)
-	// aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
-	// xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
-	// yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
-	// assert.Equal(t, 1, len(aOut))
-	// assert.Equal(t, 2, len(xOut))
-	// assert.Equal(t, 2, len(yOut))
+		rule x:
+			inputs: a={'type': 'a-out'}
+			outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
+			run 'date'
+
+		rule y:
+			inputs: in={'type': 'x-out'}
+			outputs: {'type': 'y-out'}
+			run 'date'
+	`)
+	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
+	run(context.Background(), config, db)
+	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+	xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
+	yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
+	assert.Equal(t, 1, len(aOut))
+	assert.Equal(t, 2, len(xOut))
+	assert.Equal(t, 2, len(yOut))
 }

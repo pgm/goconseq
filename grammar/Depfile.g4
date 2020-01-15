@@ -1,6 +1,6 @@
 grammar Depfile;
 
-all_declarations: ( declaration)*;
+all_declarations: ( declaration)* EOF;
 
 declaration: var_stmt | add_if_missing | rule_declaration;
 
@@ -8,7 +8,10 @@ declaration: var_stmt | add_if_missing | rule_declaration;
  # | rule # | include_stmt # | exec_profile # | remember_executed # | conditional # | eval_statement
  */
 
-rule_declaration: 'rule' IDENTIFIER ':' input_bindings? output?;
+rule_declaration:
+	'rule' IDENTIFIER ':' input_bindings? output? run_statement*;
+
+run_statement: 'run' quoted_string ('with' quoted_string)?;
 
 input_bindings: 'inputs' ':' binding (',' binding)*;
 

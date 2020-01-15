@@ -23,11 +23,6 @@ type CompletionState struct {
 	ProcessState *os.ProcessState
 }
 
-type RunWith struct {
-	Command string
-	Body    string
-}
-
 type Executor interface {
 	// Starts an execution
 	Resume(resumeState string) (exec Execution, err error)
@@ -38,7 +33,7 @@ type ExecutionBuilder interface {
 	Localize(fileId int) (string, error)
 	AddFile(body []byte) (string, error)
 
-	Prepare(stmts []*RunWith) error
+	Prepare(stmts []*RunWithStatement) error
 
 	Start(context context.Context) (exec Execution, err error)
 }

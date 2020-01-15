@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"github.com/pgm/goconseq/model"
 	"github.com/pgm/goconseq/parser/antlrparser"
 )
 
@@ -53,6 +54,18 @@ func (l *Listener) EnterRule_declaration(ctx *antlrparser.Rule_declarationContex
 
 func (l *Listener) ExitRule_declaration(ctx *antlrparser.Rule_declarationContext) {
 	l.CurRule = nil
+}
+
+func (l *Listener) ExitRun_statement(ctx *antlrparser.Run_statementContext) {
+	executable := l.PopString()
+	script := ""
+
+	hasScript := ctx.Quoted_string(1) != nil
+	if hasScript {
+		script = l.PopString()
+	}
+
+	l.CurRule.RunStatements = append(l.CurRule.RunStatements, &model.RunWithStatement{Executable: executable, Script: script})
 }
 
 func (l *Listener) ExitQuoted_string(ctx *antlrparser.Quoted_stringContext) {

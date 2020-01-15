@@ -17,5 +17,8 @@ func NewConfig() *Config {
 }
 
 func (c *Config) AddRule(rule *Rule) {
+	if rule.ExpectedOutputs != nil && rule.Outputs != nil {
+		panic("Cannot have both expected outputs and constant outputs defined for rule")
+	}
 	c.Rules[rule.Name] = rule
 }

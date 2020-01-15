@@ -90,7 +90,7 @@ func (p *LocalOtherProcess) Wait(listener model.Listener) {
 	listener.Completed(&model.CompletionState{Success: true})
 }
 
-func (e *LocalExecBuilder) Prepare(runStatements []*model.RunWith) error {
+func (e *LocalExecBuilder) Prepare(runStatements []*model.RunWithStatement) error {
 	var sb strings.Builder
 
 	sb.WriteString("set -ex\n")
@@ -98,26 +98,31 @@ func (e *LocalExecBuilder) Prepare(runStatements []*model.RunWith) error {
 	sb.WriteString("rm -f result.json\n")
 
 	for _, runStatement := range runStatements {
-		sb.WriteString(`if [ $EXIT_STATUS == 0 ]; then
-  # Propagate kill if shell receives SIGTERM or SIGINT
-  trap 'kill -TERM $PID' TERM INT
-`)
-		if runStatement.Body != "" {
-			localName, err := e.AddFile([]byte(runStatement.Body))
-			if err != nil {
-				return err
-			}
-			sb.WriteString("  " + runStatement.Command + " " + localName + " &\n")
+		if strings.HasPrefix(runStatement.Executable, "cat > ") && runStatement.Script == "" {
+			log.Printf("Warning: TODO: remove hack for cat")
+			sb.WriteString(runStatement.Executable)
 		} else {
-			sb.WriteString("  " + runStatement.Command + " &\n")
+			sb.WriteString(`if [ $EXIT_STATUS == 0 ]; then
+			# Propagate kill if shell receives SIGTERM or SIGINT
+			trap 'kill -TERM $PID' TERM INT
+		  `)
+			if runStatement.Script != "" {
+				localName, err := e.AddFile([]byte(runStatement.Script))
+				if err != nil {
+					return err
+				}
+				sb.WriteString("  " + runStatement.Executable + " " + localName + " &\n")
+			} else {
+				sb.WriteString("  " + runStatement.Executable + " &\n")
+			}
+			sb.WriteString(`  PID=$!
+			wait $PID
+			trap - TERM INT
+			wait $PID
+			EXIT_STATUS=$?
+		  fi
+		  `)
 		}
-		sb.WriteString(`  PID=$!
-  wait $PID
-  trap - TERM INT
-  wait $PID
-  EXIT_STATUS=$?
-fi
-`)
 	}
 
 	sb.WriteString("exit $EXIT_STATUS\n")
@@ -187,7 +192,7 @@ func (l *LocalExecBuilder) Localize(fileID int) (string, error) {
 }
 
 func (e *LocalExec) Builder(jobIndex int) model.ExecutionBuilder {
-	workDir := e.jobDir + "/" + strconv.Itoa(jobIndex)
+	workDir := e.jobDir + "/r" + strconv.Itoa(jobIndex)
 	os.MkdirAll(workDir, os.ModePerm)
 	return &LocalExecBuilder{
 		workDir: workDir,

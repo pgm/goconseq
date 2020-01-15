@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/pgm/goconseq/graph"
 	"github.com/pgm/goconseq/model"
@@ -35,6 +36,7 @@ func (e *execListener) UpdateStatus(status string) {
 func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 	gb := graph.NewGraphBuilder()
 	for _, rule := range rules {
+		gb.AddRule(rule.Name)
 		for _, queryProps := range rule.GetQueryProps() {
 			gb.AddRuleConsumes(rule.Name, false, queryProps)
 		}
@@ -54,7 +56,7 @@ func ProcessRule(db *persist.DB,
 	startCallback func(id int, name string, inputs *persist.Bindings) string) (int, error) {
 	started := 0
 	var rows []*persist.Bindings
-	if query == nil {
+	if query == nil || query.IsEmpty() {
 		rows = []*persist.Bindings{persist.EmptyBinding}
 	} else {
 		rows = persist.ExecuteQuery(db, query)
@@ -79,13 +81,6 @@ func ProcessRule(db *persist.DB,
 	return started, nil
 }
 
-func generateCommand(rule *model.Rule, inputs *persist.Bindings) string {
-	if rule.RunStatements != nil {
-		panic("unimplemented")
-	}
-	return "date"
-}
-
 func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifact) *persist.Artifact {
 	var newArtifact persist.Artifact
 	for k, v := range artifact.Properties.Strings {
@@ -99,6 +94,40 @@ func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifa
 		newArtifact.Properties.Strings[k] = localPath
 	}
 	return &newArtifact
+}
+
+func expandTemplate(s string, vars *persist.Bindings) string {
+	if strings.Contains(s, "{{") {
+		panic("templates not implemented")
+	}
+	return s
+}
+
+func renderOutputsAsText(outputs []map[string]string) string {
+	j, err := json.Marshal(outputs)
+	if err != nil {
+		panic(err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("cat > results.json <<EOF\n")
+	sb.WriteString("{\"outputs\": ")
+	sb.Write(j)
+	sb.WriteString("}\n")
+	sb.WriteString("EOF\n")
+	return sb.String()
+}
+
+func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bindings, outputs []map[string]string) []*model.RunWithStatement {
+	result := make([]*model.RunWithStatement, len(runWith))
+	for i, r := range runWith {
+		result[i] = &model.RunWithStatement{Executable: expandTemplate(r.Executable, inputs), Script: expandTemplate(r.Script, inputs)}
+	}
+	if outputs != nil {
+		outputsText := renderOutputsAsText(outputs)
+		result = append(result, &model.RunWithStatement{Executable: outputsText})
+	}
+	return result
 }
 
 func run(context context.Context, config *model.Config, db *persist.DB) {
@@ -122,8 +151,6 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 
 	startCallback := func(id int, name string, inputs *persist.Bindings) string {
 		listener := &execListener{ruleApplicationID: id, c: listenerUpdates}
-		// execution := ExecutionFactory.Create()
-		// command := generateCommand(execution, name, inputs)
 		rule := config.Rules[name]
 		executorName := rule.ExecutorName
 		executor := config.Executors[executorName]
@@ -131,14 +158,15 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 		localizedInputs := inputs.Transform(func(artifact *persist.Artifact) *persist.Artifact {
 			return localizeArtifact(builder, artifact)
 		})
-		command := generateCommand(rule, localizedInputs)
+		runStatements := expandRunStatements(rule.RunStatements, localizedInputs, rule.Outputs)
+		builder.Prepare(runStatements)
 
-		// special case: nothing to run for this rule. primarily used by tests
-		if command == "" {
-			plan.Started(name)
-			listener.Completed(&model.CompletionState{Success: true})
-			return ""
-		}
+		// // special case: nothing to run for this rule. primarily used by tests
+		// if command == "" {
+		// 	plan.Started(name)
+		// 	listener.Completed(&model.CompletionState{Success: true})
+		// 	return ""
+		// }
 		process, err := builder.Start(context)
 		if err != nil {
 			panic(err)
@@ -169,66 +197,67 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 
 	nextCompletion := graph.InitialState
 	for {
-		log.Printf("completed: %s", nextCompletion)
-		plan.Completed(nextCompletion)
-		running--
-		next := plan.GetPrioritizedNext()
-		processRules(next)
-		next = plan.GetNext()
-		processRules(next)
+		if nextCompletion != "" {
+			log.Printf("completed: %s", nextCompletion)
+			plan.Completed(nextCompletion)
+			next := plan.GetPrioritizedNext()
+			processRules(next)
+			next = plan.GetNext()
+			processRules(next)
+		}
 
 		if plan.Done() && running == 0 {
 			break
 		}
 
-		for {
-			ruleApplicationID, completionState := getNextCompletion()
-			log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
-			success := completionState.Success
+		ruleApplicationID, completionState := getNextCompletion()
+		log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
+		success := completionState.Success
+		running--
 
-			var failureMessage string
-			var outputs []*persist.ArtifactProperties
+		var failureMessage string
+		var outputs []*persist.ArtifactProperties
 
-			if success {
-				// attempt to parse the results
-				var err error
-				outputs, err = readResultOutputs(db.GetWorkDir(ruleApplicationID), func(filename string) (int, error) {
-					panic("unimp")
-				})
-				if err != nil {
-					success = false
-					failureMessage = err.Error()
-				}
-			} else {
-				failureMessage = completionState.FailureMessage
+		if success {
+			// attempt to parse the results
+			var err error
+			outputs, err = readResultOutputs(db.GetWorkDir(ruleApplicationID), func(filename string) (int, error) {
+				panic("unimp")
+			})
+			if err != nil {
+				success = false
+				failureMessage = err.Error()
 			}
+		} else {
+			failureMessage = completionState.FailureMessage
+		}
 
-			if success {
-				// write all of the artifacts to the DB
-				outputArtifacts := make([]*persist.Artifact, len(outputs))
-				for i, props := range outputs {
-					artifact, err := db.PersistArtifact(ruleApplicationID, props)
-					if err != nil {
-						panic(err)
-					}
-					outputArtifacts[i] = artifact
-				}
-
-				// mark applied rule as complete
-				db.UpdateAppliedRuleComplete(ruleApplicationID, outputArtifacts)
-
-				// notify the scheduler that this rule completed
-				appliedRule := db.GetAppliedRule(ruleApplicationID)
-				nextCompletion = appliedRule.Name
-				break
-			} else {
-				log.Printf("Error: %s", failureMessage)
-
-				err := db.DeleteAppliedRule(ruleApplicationID)
+		if success {
+			// write all of the artifacts to the DB
+			outputArtifacts := make([]*persist.Artifact, len(outputs))
+			for i, props := range outputs {
+				artifact, err := db.PersistArtifact(ruleApplicationID, props)
 				if err != nil {
 					panic(err)
 				}
+				outputArtifacts[i] = artifact
 			}
+
+			// mark applied rule as complete
+			db.UpdateAppliedRuleComplete(ruleApplicationID, outputArtifacts)
+
+			// notify the scheduler that this rule completed
+			appliedRule := db.GetAppliedRule(ruleApplicationID)
+			nextCompletion = appliedRule.Name
+		} else {
+			log.Printf("Error: %s", failureMessage)
+
+			err := db.DeleteAppliedRule(ruleApplicationID)
+			running--
+			if err != nil {
+				panic(err)
+			}
+			nextCompletion = ""
 		}
 	}
 }

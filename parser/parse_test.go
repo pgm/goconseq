@@ -15,7 +15,7 @@ func TestParseLetStatement(t *testing.T) {
 	stmts, err := ParseString("let x = 'a'")
 	assert.Nil(t, err)
 	assert.Equal(t, len(stmts.Statements), 1)
-	config := model.NewConfig(nil)
+	config := model.NewConfig()
 	stmts.Eval(config)
 	assert.Equal(t, config.Vars["x"], "a")
 }

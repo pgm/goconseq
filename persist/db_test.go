@@ -1,13 +1,19 @@
 package persist
 
 import (
+	"io/ioutil"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestJoinedQuery(t *testing.T) {
-	db := NewDB()
+	stateDir, err := ioutil.TempDir("", "TestJoinedQuery")
+	if err != nil {
+		panic(err)
+	}
+	db := NewDB(path.Join(stateDir, "db"))
 
 	joePerson, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "person", "name": "joe", "select": "a"}})
 	joeAddress, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "address", "name": "joe"}})
@@ -43,7 +49,11 @@ func TestJoinedQuery(t *testing.T) {
 }
 
 func TestSimpleQuery(t *testing.T) {
-	db := NewDB()
+	stateDir, err := ioutil.TempDir("", "TestSimpleQuery")
+	if err != nil {
+		panic(err)
+	}
+	db := NewDB(path.Join(stateDir, "db"))
 
 	a1, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "true", "common": "shared"}})
 	a2, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "false", "common": "shared"}})

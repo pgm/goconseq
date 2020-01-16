@@ -8,7 +8,7 @@ type ArtifactProperties struct {
 type Artifact struct {
 	id         int
 	ProducedBy int
-	Properties ArtifactProperties
+	Properties *ArtifactProperties
 }
 
 func NewArtifactProperties() *ArtifactProperties {

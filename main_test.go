@@ -53,7 +53,10 @@ func (m *MockExecutionBuilder) AddFile(body []byte) (string, error) {
 func (m *MockExecutionBuilder) Prepare(stmts []*model.RunWithStatement) error {
 	workDir := m.executor.db.GetWorkDir(m.id)
 	os.MkdirAll(workDir, os.ModePerm)
-	panic("unimp")
+	if len(stmts) != 0 {
+		panic("unimp")
+	}
+	return nil
 }
 
 func (m *MockExecutionBuilder) Start(context context.Context) (exec model.Execution, err error) {

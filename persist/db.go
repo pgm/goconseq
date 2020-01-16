@@ -81,7 +81,7 @@ func (db *DB) DeleteAppliedRule(ID int) error {
 func (db *DB) PersistArtifact(ProducedBy int, Properties *ArtifactProperties) (*Artifact, error) {
 	id := db.nextArtifactID
 	db.nextArtifactID++
-	artifact := &Artifact{id: id, ProducedBy: ProducedBy, Properties: *Properties}
+	artifact := &Artifact{id: id, ProducedBy: ProducedBy, Properties: Properties}
 	db.artifacts[id] = artifact
 
 	return artifact, nil
@@ -248,7 +248,7 @@ func ExecuteQuery(db *DB, query *Query) []*Bindings {
 	if len(query.forAll) != 0 {
 		panic("forall not implemented")
 	}
-	if len(query.forAll) == 0 {
+	if len(query.forEach) == 0 {
 		panic("need at least one foreach")
 	}
 	return _executeQuery(db, placeholders, query.forEach)

@@ -82,18 +82,19 @@ func ProcessRule(db *persist.DB,
 }
 
 func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifact) *persist.Artifact {
-	var newArtifact persist.Artifact
+	newProps := persist.NewArtifactProperties()
 	for k, v := range artifact.Properties.Strings {
-		newArtifact.Properties.Strings[k] = v
+		newProps.Strings[k] = v
 	}
 	for k, fileID := range artifact.Properties.Files {
 		localPath, err := localizer.Localize(fileID)
 		if err != nil {
 			panic(err)
 		}
-		newArtifact.Properties.Strings[k] = localPath
+		newProps.Strings[k] = localPath
 	}
-	return &newArtifact
+
+	return &persist.Artifact{ProducedBy: -1, Properties: newProps}
 }
 
 func expandTemplate(s string, vars *persist.Bindings) string {
@@ -130,6 +131,10 @@ func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bind
 	return result
 }
 
+type RunningRuleApplication struct {
+	Name string
+}
+
 func run(context context.Context, config *model.Config, db *persist.DB) {
 	// load rules into memory
 	plan := rulesToExecutionPlan(config.Rules)
@@ -148,6 +153,8 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			}
 		}
 	}
+
+	running := make(map[int]*RunningRuleApplication)
 
 	startCallback := func(id int, name string, inputs *persist.Bindings) string {
 		listener := &execListener{ruleApplicationID: id, c: listenerUpdates}
@@ -174,23 +181,22 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 
 		plan.Started(name)
 
+		running[id] = &RunningRuleApplication{Name: name}
+
 		resumeState := process.GetResumeState()
 		go process.Wait(listener)
 
 		return resumeState
 	}
 
-	running := 1
-
 	processRules := func(next []string) error {
 		log.Printf("processRules called with: %v", next)
 		for _, name := range next {
 			query := config.Rules[name].Query
-			started, err := ProcessRule(db, name, query, startCallback)
+			_, err := ProcessRule(db, name, query, startCallback)
 			if err != nil {
 				return err
 			}
-			running += started
 		}
 		return nil
 	}
@@ -206,14 +212,15 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			processRules(next)
 		}
 
-		if plan.Done() && running == 0 {
+		log.Printf("plan.Done() = %v running = %v", plan.Done(), running)
+		if plan.Done() && len(running) == 0 {
 			break
 		}
 
 		ruleApplicationID, completionState := getNextCompletion()
 		log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
 		success := completionState.Success
-		running--
+		delete(running, ruleApplicationID)
 
 		var failureMessage string
 		var outputs []*persist.ArtifactProperties
@@ -253,7 +260,6 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			log.Printf("Error: %s", failureMessage)
 
 			err := db.DeleteAppliedRule(ruleApplicationID)
-			running--
 			if err != nil {
 				panic(err)
 			}

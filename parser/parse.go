@@ -39,6 +39,14 @@ func ParseString(s string) (*Statements, error) {
 	return parseCharStream(is)
 }
 
+func ParseFile(filename string) (*Statements, error) {
+	is, err := antlr.NewFileStream(filename)
+	if err != nil {
+		return nil, err
+	}
+	return parseCharStream(is)
+}
+
 // func parseCharStream(is antlr.CharStream) (*Statements, error) {
 // 	lexer := antlrparser.NewDepfileLexer(is)
 // 	// for i := 0; i < 5; i++ {

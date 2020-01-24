@@ -9,8 +9,10 @@ import (
 	"path"
 	"strings"
 
+	"github.com/flosch/pongo2"
 	"github.com/pgm/goconseq/graph"
 	"github.com/pgm/goconseq/model"
+	"github.com/pgm/goconseq/parser"
 	"github.com/pgm/goconseq/persist"
 )
 
@@ -45,7 +47,7 @@ func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 		}
 	}
 	g := gb.Build()
-	g.Print()
+	// g.Print()
 	plan := graph.ConstructExecutionPlan(g)
 	return plan
 }
@@ -97,11 +99,19 @@ func localizeArtifact(localizer model.ExecutionBuilder, artifact *persist.Artifa
 	return &persist.Artifact{ProducedBy: -1, Properties: newProps}
 }
 
-func expandTemplate(s string, vars *persist.Bindings) string {
-	if strings.Contains(s, "{{") {
-		panic("templates not implemented")
+func expandTemplate(s string, inputs *persist.Bindings) string {
+	// return s
+	template := pongo2.Must(pongo2.FromString(s))
+	inputsContext := map[string]interface{}{}
+	for name, value := range inputs.ByName {
+		strings := value.GetArtifacts()[0].Properties.Strings
+		inputsContext[name] = strings
 	}
-	return s
+	result, err := template.Execute(map[string]interface{}{"inputs": inputsContext})
+	if err != nil {
+		panic(err)
+	}
+	return result
 }
 
 func renderOutputsAsText(outputs []map[string]string) string {
@@ -190,7 +200,7 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 	}
 
 	processRules := func(next []string) error {
-		log.Printf("processRules called with: %v", next)
+		// log.Printf("processRules called with: %v", next)
 		for _, name := range next {
 			query := config.Rules[name].Query
 			_, err := ProcessRule(db, name, query, startCallback)
@@ -212,13 +222,13 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			processRules(next)
 		}
 
-		log.Printf("plan.Done() = %v running = %v", plan.Done(), running)
+		// log.Printf("plan.Done() = %v running = %v", plan.Done(), running)
 		if plan.Done() && len(running) == 0 {
 			break
 		}
 
 		ruleApplicationID, completionState := getNextCompletion()
-		log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
+		// log.Printf("getNextCompletion returned ruleApplicationID=%v, model.CompletionState=%v", ruleApplicationID, completionState)
 		success := completionState.Success
 		delete(running, ruleApplicationID)
 
@@ -326,4 +336,29 @@ func artifactPropsFromJson(json interface{}, getFileID func(filename string) (in
 		}
 	}
 	return artifact
+}
+
+func parseFile(config *model.Config, filename string) error {
+	statements, err := parser.ParseFile(filename)
+	if err != nil {
+		return err
+	}
+	statements.Eval(config)
+	return nil
+}
+
+func RunRulesInFile(stateDir string, filename string) error {
+	config := model.NewConfig()
+	config.StateDir = stateDir
+
+	db := persist.NewDB(stateDir)
+	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
+
+	err := parseFile(config, filename)
+	if err != nil {
+		return err
+	}
+
+	run(context.Background(), config, db)
+	return nil
 }

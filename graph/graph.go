@@ -1,9 +1,5 @@
 package graph
 
-import (
-	"log"
-)
-
 type rule struct {
 	name     string
 	produces []*artifact
@@ -49,18 +45,17 @@ func (g *Graph) ForEachRule(f func(r *rule)) {
 	}
 }
 
-func (g *Graph) Print() {
-	printRule := func(r *rule) {
-		log.Printf("rule %s:", r.name)
-		for _, a := range r.consumes {
-			log.Printf("consumes: %p", a)
-		}
-		for _, a := range r.consumes {
-			log.Printf("produces: %p", a)
-		}
-	}
-	g.ForEachRule(printRule)
-}
+// func (g *Graph) Print() {
+// 	printRule := func(r *rule) {
+// 		for _, a := range r.consumes {
+// 			log.Printf("consumes: %p", a)
+// 		}
+// 		for _, a := range r.consumes {
+// 			log.Printf("produces: %p", a)
+// 		}
+// 	}
+// 	g.ForEachRule(printRule)
+// }
 
 type artifactIndex struct {
 	// naive implementation. replace with something more efficient

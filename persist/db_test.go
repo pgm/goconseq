@@ -10,10 +10,10 @@ import (
 
 func TestJoinedQuery(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", "TestJoinedQuery")
-	if err != nil {
-		panic(err)
-	}
-	db := NewDB(path.Join(stateDir, "db"))
+	assert.Nil(t, err)
+
+	dir := path.Join(stateDir, "db")
+	db := NewDB(dir)
 
 	joePerson, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "person", "name": "joe", "select": "a"}})
 	joeAddress, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "address", "name": "joe"}})
@@ -46,14 +46,21 @@ func TestJoinedQuery(t *testing.T) {
 
 	fetchAndVerify(joePerson.id, joeAddress.id, "a")
 	fetchAndVerify(stevePerson.id, steveAddress.id, "b")
+
+	db.Close()
+
+	// verify everything still works after we close and reopen the db
+	db = NewDB(dir)
+	fetchAndVerify(joePerson.id, joeAddress.id, "a")
+	fetchAndVerify(stevePerson.id, steveAddress.id, "b")
 }
 
 func TestSimpleQuery(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", "TestSimpleQuery")
-	if err != nil {
-		panic(err)
-	}
-	db := NewDB(path.Join(stateDir, "db"))
+	assert.Nil(t, err)
+
+	dir := path.Join(stateDir, "db")
+	db := NewDB(dir)
 
 	a1, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "true", "common": "shared"}})
 	a2, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "false", "common": "shared"}})
@@ -76,15 +83,23 @@ func TestSimpleQuery(t *testing.T) {
 		assert.Equal(t, expectedID, artifacts[0].id)
 	}
 
-	// queries that select a single artifact
-	fetchAndVerify(a2.id, "false")
-	fetchAndVerify(a1.id, "true")
+	allChecks := func() {
+		// queries that select a single artifact
+		fetchAndVerify(a2.id, "false")
+		fetchAndVerify(a1.id, "true")
 
-	// and now try a query that should return nothing
-	empty := ExecuteQuery(db, makeQuery("prop", "other"))
-	assert.Equal(t, 0, len(empty))
+		// and now try a query that should return nothing
+		empty := ExecuteQuery(db, makeQuery("prop", "other"))
+		assert.Equal(t, 0, len(empty))
 
-	// and a query that selects all artifacts
-	all := ExecuteQuery(db, makeQuery("common", "shared"))
-	assert.Equal(t, 2, len(all))
+		// and a query that selects all artifacts
+		all := ExecuteQuery(db, makeQuery("common", "shared"))
+		assert.Equal(t, 2, len(all))
+	}
+
+	allChecks()
+	db.Close()
+	// verify everything still works after we close and reopen the db
+	db = NewDB(dir)
+	allChecks()
 }

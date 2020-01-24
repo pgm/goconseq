@@ -34,6 +34,8 @@ func (b *Bindings) AddArtifact(name string, artifact *Artifact) {
 	b.ByName[name] = &SingleArtifact{MultipleArtifacts: MultipleArtifacts{[]*Artifact{artifact}}}
 }
 
+
+
 func (b *Bindings) Transform(transform func(artifact *Artifact) *Artifact) *Bindings {
 	nb := NewBindings()
 	for name, value := range b.ByName {

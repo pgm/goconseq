@@ -84,6 +84,15 @@ func (m *MockExecution) Wait(listener model.Listener) {
 	listener.Completed(&model.CompletionState{Success: true})
 }
 
+func TestExpandTemplates(t *testing.T) {
+	bindings := persist.NewBindings()
+	props := persist.NewArtifactProperties()
+	props.Strings["c"] = "d"
+	bindings.AddArtifact("b", &persist.Artifact{Properties: props})
+	s := expandTemplate("inputs.b.c = {{ inputs.b.c }}", bindings)
+	assert.Equal(t, "inputs.b.c = d", s)
+}
+
 func TestSimpleSingleRuleRun(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", "TestSimpleSingleRuleRun")
 	if err != nil {

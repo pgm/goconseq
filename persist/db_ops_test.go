@@ -29,16 +29,6 @@ func verifyOp(t *testing.T, writeCallback func(*OpLogWriter), verifyCallback fun
 	r.Close()
 }
 
-func TestDeleteArtifactOp(t *testing.T) {
-	verifyOp(t, func(w *OpLogWriter) {
-		w.WriteDeleteArtifact(10)
-	}, func(ops []DBOp) {
-		assert.Equal(t, 1, len(ops))
-		op := ops[0].(*DeleteArtifactOp)
-		assert.Equal(t, 10, op.ID)
-	})
-}
-
 func TestWriteSetFileOp(t *testing.T) {
 	verifyOp(t, func(w *OpLogWriter) {
 		w.WriteSetFile(&File{FileID: 12, LocalPath: "local", GlobalPath: "global"})
@@ -57,7 +47,6 @@ func TestWriteSetArtifact(t *testing.T) {
 	props.Strings["string"] = "value"
 	artifact := &Artifact{
 		id:         100,
-		ProducedBy: 20,
 		Properties: props}
 
 	verifyOp(t, func(w *OpLogWriter) {
@@ -66,7 +55,6 @@ func TestWriteSetArtifact(t *testing.T) {
 		assert.Equal(t, 1, len(ops))
 		op := ops[0].(*SetArtifactOp)
 		assert.Equal(t, 100, op.ID)
-		assert.Equal(t, 20, op.ProducedBy)
 		assert.Equal(t, 1, len(op.StringProps))
 		assert.Equal(t, 1, len(op.FileProps))
 	})
@@ -82,14 +70,13 @@ func TestWriteSetAppliedRuleOp(t *testing.T) {
 	props.Strings["string"] = "value"
 	// artifact := &Artifact{
 	// 	id:         100,
-	// 	ProducedBy: 20,
 	// 	Properties: props}
 
 	bindings := NewBindings()
 	bindings.AddArtifact("single", makeArtifact(41))
 	bindings.AddArtifacts("multi", []*Artifact{makeArtifact(43), makeArtifact(44)})
 	rule := &AppliedRule{
-		id:          30,
+		ID:          30,
 		Name:        "rule",
 		Inputs:      bindings,
 		Outputs:     []*Artifact{makeArtifact(40)},
@@ -104,15 +91,5 @@ func TestWriteSetAppliedRuleOp(t *testing.T) {
 		assert.Equal(t, "rule", op.Name)
 		assert.Equal(t, 1, len(op.Outputs))
 		assert.Equal(t, 2, len(op.Inputs))
-	})
-}
-
-func TestDeleteAppliedRuleOp(t *testing.T) {
-	verifyOp(t, func(w *OpLogWriter) {
-		w.WriteDeleteAppliedRule(10)
-	}, func(ops []DBOp) {
-		assert.Equal(t, 1, len(ops))
-		op := ops[0].(*DeleteAppliedRuleOp)
-		assert.Equal(t, 10, op.ID)
 	})
 }

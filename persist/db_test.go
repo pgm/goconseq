@@ -15,10 +15,15 @@ func TestJoinedQuery(t *testing.T) {
 	dir := path.Join(stateDir, "db")
 	db := NewDB(dir)
 
-	joePerson, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "person", "name": "joe", "select": "a"}})
-	joeAddress, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "address", "name": "joe"}})
-	stevePerson, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "person", "name": "steve", "select": "b"}})
-	steveAddress, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"type": "address", "name": "steve"}})
+	joePerson, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"type": "person", "name": "joe", "select": "a"}})
+	joeAddress, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"type": "address", "name": "joe"}})
+	stevePerson, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"type": "person", "name": "steve", "select": "b"}})
+	steveAddress, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"type": "address", "name": "steve"}})
+	appID := db.GetNextApplicationID()
+
+	app, err := db.PersistAppliedRule(appID, "init", NewBindings(), "")
+	db.UpdateAppliedRuleComplete(app.ID, []*Artifact{joePerson, joeAddress, stevePerson, steveAddress})
+	assert.Nil(t, err)
 
 	fetchAndVerify := func(personID int, addressID int, propValue string) {
 		query := &Query{
@@ -49,10 +54,18 @@ func TestJoinedQuery(t *testing.T) {
 
 	db.Close()
 
-	// verify everything still works after we close and reopen the db
+	// verify we can reconstruct the artifacts and applications after reopening the DB
 	db = NewDB(dir)
-	fetchAndVerify(joePerson.id, joeAddress.id, "a")
-	fetchAndVerify(stevePerson.id, steveAddress.id, "b")
+	defer db.Close()
+
+	// compare the number of artifacts
+	assert.Equal(t, 4, len(db.artifactHistoryByID))
+	assert.Equal(t, 4, len(db.artifactHistoryByHash))
+
+	// compare a single artifact's properties
+	newJoePerson := db.artifactHistoryByID[joePerson.id]
+	assert.NotEqual(t, newJoePerson, joePerson)
+	assert.Equal(t, newJoePerson.Properties.Hash(), joePerson.Properties.Hash())
 }
 
 func TestSimpleQuery(t *testing.T) {
@@ -62,8 +75,12 @@ func TestSimpleQuery(t *testing.T) {
 	dir := path.Join(stateDir, "db")
 	db := NewDB(dir)
 
-	a1, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "true", "common": "shared"}})
-	a2, _ := db.PersistArtifact(InitialStep, &ArtifactProperties{Strings: map[string]string{"prop": "false", "common": "shared"}})
+	a1, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"prop": "true", "common": "shared"}})
+	a2, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"prop": "false", "common": "shared"}})
+	appID := db.GetNextApplicationID()
+	app, err := db.PersistAppliedRule(appID, "init", NewBindings(), "")
+	db.UpdateAppliedRuleComplete(app.ID, []*Artifact{a1, a2})
+	assert.Nil(t, err)
 
 	makeQuery := func(propName string, propValue string) *Query {
 		return &Query{
@@ -99,7 +116,12 @@ func TestSimpleQuery(t *testing.T) {
 
 	allChecks()
 	db.Close()
+
 	// verify everything still works after we close and reopen the db
 	db = NewDB(dir)
-	allChecks()
+	defer db.Close()
+
+	assert.Equal(t, 2, len(db.artifactHistoryByID))
+	assert.Equal(t, 2, len(db.artifactHistoryByHash))
+
 }

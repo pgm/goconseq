@@ -20,13 +20,18 @@ type File struct {
 type DB struct {
 	// todo: make DB methods threadsafe
 
-	nextID            int
-	nextAppliedRuleID int
-	artifacts         map[int]*Artifact
-	appliedRules      map[int]*AppliedRule
-	files             map[int]*File
-	stateDir          string
-	writer            *OpLogWriter
+	nextID              int
+	nextAppliedRuleID   int
+	currentArtifacts    map[int]*Artifact    // the in-memory set of all artifacts which resulted from the current run
+	currentAppliedRules map[int]*AppliedRule // the set of all appliedRules which participated in the current run
+	stateDir            string
+	writer              *OpLogWriter
+
+	artifactHistoryByHash map[string]*Artifact // all artifacts ever generated
+	artifactHistoryByID   map[int]*Artifact    // all artifacts ever generated
+	// appliedRuleHistoryByHash map[string]*AppliedRule // all artifacts ever generated
+	appliedRuleHistoryByID map[int]*AppliedRule // all artifacts ever generated
+	files                  map[int]*File
 }
 
 type DBOp interface {
@@ -43,9 +48,14 @@ func NewDB(stateDir string) *DB {
 		}
 	}
 
-	db := &DB{artifacts: make(map[int]*Artifact),
-		appliedRules: make(map[int]*AppliedRule),
-		stateDir:     stateDir}
+	db := &DB{
+		currentArtifacts:       make(map[int]*Artifact),
+		artifactHistoryByID:    make(map[int]*Artifact),
+		artifactHistoryByHash:  make(map[string]*Artifact),
+		currentAppliedRules:    make(map[int]*AppliedRule),
+		appliedRuleHistoryByID: make(map[int]*AppliedRule),
+		// appliedRuleHistoryByHash: make(map[string]*AppliedRule),
+		stateDir: stateDir}
 
 	logPath := path.Join(stateDir, "db.journal")
 	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
@@ -96,7 +106,7 @@ func (db *DB) GetWorkDir(appliedRuleID int) string {
 
 // all _read_ operations do not return errors because they only use memory. All _write_ operations return an error
 func (db *DB) FindAppliedRule(Name string, Inputs *Bindings) *AppliedRule {
-	for _, appliedRule := range db.appliedRules {
+	for _, appliedRule := range db.currentAppliedRules {
 		if appliedRule.IsEquivilent(Name, Inputs) {
 			return appliedRule
 		}
@@ -105,11 +115,12 @@ func (db *DB) FindAppliedRule(Name string, Inputs *Bindings) *AppliedRule {
 }
 
 func (db *DB) GetAppliedRule(id int) *AppliedRule {
-	return db.appliedRules[id]
+	return db.appliedRuleHistoryByID[id]
 }
 
+// writes AppliedRule to history _and_ adds as a current rule application
 func (db *DB) PersistAppliedRule(ID int, Name string, Inputs *Bindings, ResumeState string) (*AppliedRule, error) {
-	appliedRule := &AppliedRule{id: ID, Name: Name, Inputs: Inputs, ResumeState: ResumeState}
+	appliedRule := &AppliedRule{ID: ID, Name: Name, Inputs: Inputs, ResumeState: ResumeState}
 
 	db.writer.WriteSetAppliedRule(appliedRule).Update(db)
 	db.writer.Commit()
@@ -117,30 +128,36 @@ func (db *DB) PersistAppliedRule(ID int, Name string, Inputs *Bindings, ResumeSt
 	return appliedRule, nil
 }
 
+func (db *DB) AddAppliedRuleToCurrent(ID int) {
+	appliedRule := db.appliedRuleHistoryByID[ID]
+	db.currentAppliedRules[appliedRule.ID] = appliedRule
+
+	// if this rule is complete, add all the artifacts to the current session as well
+	if appliedRule.Outputs != nil {
+		for _, output := range appliedRule.Outputs {
+			db.currentArtifacts[output.id] = output
+		}
+	}
+}
+
 func (db *DB) UpdateAppliedRuleComplete(ID int, Outputs []*Artifact) error {
-	appliedRule := *db.appliedRules[ID]
+	appliedRule := *db.appliedRuleHistoryByID[ID]
 	appliedRule.Outputs = Outputs
 	appliedRule.ResumeState = ""
 
 	db.writer.WriteSetAppliedRule(&appliedRule).Update(db)
 	db.writer.Commit()
 
-	return nil
-}
-
-func (db *DB) DeleteAppliedRule(ID int) error {
-	db.writer.WriteDeleteAppliedRule(ID).Update(db)
-	db.writer.Commit()
+	for _, output := range Outputs {
+		db.currentArtifacts[output.id] = output
+	}
 
 	return nil
 }
 
-// func (db *DB) DeleteArtifact(ID int) error {
-// }
-
-func (db *DB) PersistArtifact(ProducedBy int, Properties *ArtifactProperties) (*Artifact, error) {
+func (db *DB) PersistArtifact(Properties *ArtifactProperties) (*Artifact, error) {
 	id := db.nextID
-	artifact := &Artifact{id: id, ProducedBy: ProducedBy, Properties: Properties}
+	artifact := &Artifact{id: id, Properties: Properties}
 
 	db.writer.WriteSetNextIDs(db.nextID+1, db.nextAppliedRuleID).Update(db)
 	db.writer.WriteSetArtifact(artifact).Update(db)
@@ -152,9 +169,10 @@ func (db *DB) PersistArtifact(ProducedBy int, Properties *ArtifactProperties) (*
 // func (db *DB) FindExactArtifact(Properties map[string]string) (*Artifact, error) {
 // }
 
+// Search among the current artifacts to find artifact with the properties/values
 func (db *DB) FindArtifacts(Properties map[string]string) []*Artifact {
 	results := make([]*Artifact, 0, 10)
-	for _, artifact := range db.artifacts {
+	for _, artifact := range db.currentArtifacts {
 		if artifact.HasProperties(Properties) {
 			results = append(results, artifact)
 		}
@@ -194,6 +212,51 @@ func (db *DB) UpdateFile(fileID int, localPath string, globalPath string) *File 
 	db.writer.Commit()
 
 	return file
+}
+
+func (db *DB) FindAppliedRuleInHistory(name string, inputs *Bindings) {
+	panic("unimp")
+}
+
+func (db *DB) FindArtifactInHistory(props *ArtifactProperties) {
+	panic("unimp")
+}
+
+func (db *DB) DeleteAppliedRule(ID int) {
+	app := db.appliedRuleHistoryByID[ID]
+	appsToDelete := []*AppliedRule{app}
+	appsToDelete = append(appsToDelete, FindApplicationsDownstreamOfApplication(app)...)
+
+	for _, app = range appsToDelete {
+		for _, artifact := range app.Outputs {
+			db.writer.WriteDeleteArtifact(artifact.id).Update(db)
+		}
+		db.writer.WriteDeleteAppliedRule(app.ID)
+	}
+	db.writer.Commit()
+}
+
+func FindRuleApplicationsWithInput(artifact *Artifact) []*AppliedRule {
+	panic("unimp")
+}
+
+func FindApplicationsDownstreamOfArtifact(artifact *Artifact) []*AppliedRule {
+	result := make([]*AppliedRule, 0)
+
+	applications := FindRuleApplicationsWithInput(artifact)
+	for _, application := range applications {
+		result = append(result, FindApplicationsDownstreamOfApplication(application)...)
+	}
+	return result
+}
+
+func FindApplicationsDownstreamOfApplication(appliedRule *AppliedRule) []*AppliedRule {
+	result := make([]*AppliedRule, 0)
+	for _, output := range appliedRule.Outputs {
+		result = append(result, FindApplicationsDownstreamOfArtifact(output)...)
+	}
+
+	return result
 }
 
 // func (db *DB) FindAppliedRulesByName(name string) (*AppliedRule, error) {

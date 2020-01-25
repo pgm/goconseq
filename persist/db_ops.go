@@ -17,7 +17,8 @@ type DeleteArtifactOp struct {
 }
 
 func (op *DeleteArtifactOp) Update(db *DB) {
-	delete(db.artifacts, op.ID)
+	delete(db.artifactHistoryByID, op.ID)
+	delete(db.currentArtifacts, op.ID)
 }
 
 func (op *DeleteArtifactOp) GetType() string {
@@ -56,7 +57,6 @@ func (op *SetFileOp) GetType() string {
 
 type SetArtifactOp struct {
 	ID          int
-	ProducedBy  int
 	StringProps []*ArtifactStringProp
 	FileProps   []*ArtifactFileProp
 }
@@ -82,11 +82,11 @@ func (op *SetArtifactOp) Update(db *DB) {
 	}
 
 	artifact := Artifact{
-		ProducedBy: op.ProducedBy,
 		id:         op.ID,
 		Properties: props}
 
-	db.artifacts[artifact.id] = &artifact
+	db.artifactHistoryByHash[artifact.Properties.Hash()] = &artifact
+	db.artifactHistoryByID[artifact.id] = &artifact
 }
 
 func (op *SetArtifactOp) GetType() string {
@@ -112,10 +112,10 @@ func (op *SetAppliedRuleOp) Update(db *DB) {
 	for _, input := range op.Inputs {
 		artifacts := make([]*Artifact, len(input.Artifacts))
 		for i, artifactID := range input.Artifacts {
-			artifacts[i] = db.artifacts[artifactID]
+			artifacts[i] = db.artifactHistoryByID[artifactID]
 		}
 		if input.Singleton {
-			inputs.AddArtifact(input.Name, db.artifacts[input.Artifacts[0]])
+			inputs.AddArtifact(input.Name, artifacts[0])
 		} else {
 			inputs.AddArtifacts(input.Name, artifacts)
 		}
@@ -123,16 +123,16 @@ func (op *SetAppliedRuleOp) Update(db *DB) {
 
 	outputs := make([]*Artifact, len(op.Outputs))
 	for i, artifactID := range op.Outputs {
-		outputs[i] = db.artifacts[artifactID]
+		outputs[i] = db.artifactHistoryByID[artifactID]
 	}
 
-	appliedRule := AppliedRule{id: op.ID,
+	appliedRule := AppliedRule{ID: op.ID,
 		Name:        op.Name,
 		Inputs:      inputs,
 		Outputs:     outputs,
 		ResumeState: op.ResumeState}
 
-	db.appliedRules[appliedRule.id] = &appliedRule
+	db.appliedRuleHistoryByID[appliedRule.ID] = &appliedRule
 }
 
 func (op *SetAppliedRuleOp) GetType() string {
@@ -144,7 +144,8 @@ type DeleteAppliedRuleOp struct {
 }
 
 func (op *DeleteAppliedRuleOp) Update(db *DB) {
-	delete(db.appliedRules, op.ID)
+	delete(db.currentAppliedRules, op.ID)
+	delete(db.appliedRuleHistoryByID, op.ID)
 }
 
 func (op *DeleteAppliedRuleOp) GetType() string {
@@ -176,7 +177,6 @@ func (w *OpLogWriter) WriteSetArtifact(artifact *Artifact) DBOp {
 
 	op := SetArtifactOp{
 		ID:          artifact.id,
-		ProducedBy:  artifact.ProducedBy,
 		StringProps: stringProps,
 		FileProps:   fileProps}
 
@@ -225,7 +225,7 @@ func (w *OpLogWriter) WriteSetAppliedRule(rule *AppliedRule) DBOp {
 	}
 
 	op := SetAppliedRuleOp{
-		ID:          rule.id,
+		ID:          rule.ID,
 		Name:        rule.Name,
 		Inputs:      inputs,
 		Outputs:     outputs,

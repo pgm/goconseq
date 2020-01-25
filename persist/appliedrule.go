@@ -3,7 +3,7 @@ package persist
 import "sort"
 
 type AppliedRule struct {
-	id          int
+	ID          int
 	Name        string
 	Inputs      *Bindings
 	Outputs     []*Artifact

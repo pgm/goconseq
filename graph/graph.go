@@ -24,7 +24,56 @@ func NewGraphBuilder() *GraphBuilder {
 
 type Graph struct {
 	roots []*rule
+	// rulesByName map[string]*rule
 }
+
+// func (g *Graph) findUpstreamRules(name string) []string {
+// 	result := make([]string, 0, 10)
+// 	rule := g.rulesByName[name]
+// 	for _, consume := range rule.consumes {
+// 		if consume.isAll {
+// 			panic("unimp")
+// 		} else {
+// 			upstreamRules := consume.artifact.producedBy
+// 			for _, upstreamRule := range upstreamRules {
+// 				result = append(result, upstreamRule.name)
+// 				result = append(result, g.findUpstreamRules(upstreamRule.name)...)
+// 			}
+// 		}
+// 	}
+// 	return result
+// }
+
+// func (g *Graph) findDownstreamRules(name string) []string {
+// 	result := make([]string, 0, 10)
+// 	rule := g.rulesByName[name]
+// 	for _, artifact := range rule.produces {
+// 		for _, downstreamRule := range artifact.consumedBy {
+// 			result = append(result, downstreamRule.name)
+// 			result = append(result, g.findDownstreamRules(downstreamRule.name)...)
+// 		}
+// 	}
+// 	return result
+// }
+
+// func (g *Graph) subgraphWithRules(ruleNames []string) *Graph {
+// 	ruleNameSet := make(map[string]bool)
+// 	for _, name := range ruleNames {
+// 		ruleNameSet[name] = true
+// 	}
+
+// 	newRoots := make([]*rule, 0, len(g.roots))
+// 	for _, rule := range g.roots {
+// 		if
+// 	}
+// }
+
+// func (g *Graph) Subset(ruleName string) *Graph {
+// 	// finds the graph that should be executed if we want to restrict ourselves to just paths including ruleName
+// 	ruleNames := g.findUpstreamRules(ruleName)
+// 	ruleNames = append(ruleNames, g.findDownstreamRules(ruleName)...)
+// 	return g.subgraphWithRules(ruleNames)
+// }
 
 func (g *Graph) ForEachRule(f func(r *rule)) {
 	seen := make(map[*rule]bool)
@@ -148,45 +197,3 @@ func (g *GraphBuilder) AddRuleProduces(name string, props *PropertiesTemplate) {
 		consumedBy: make([]*rule, 0, 1),
 		producedBy: make([]*rule, 0, 1)})
 }
-
-func ConstructExecutionPlan(g *Graph) *ExecutionPlan {
-	// TODO: Doesn't support "forall". Revisit considering using "group by" instead of all
-	plan := NewExecutionPlan()
-	g.ForEachRule(func(r *rule) {
-		// precursor string, successor string, waitForAll bool
-		if len(r.consumes) == 0 {
-			plan.AddDependency(InitialState, r.name, false)
-		} else {
-			for _, a := range r.consumes {
-				for _, precursor := range a.artifact.producedBy {
-					plan.AddDependency(precursor.name, r.name, false)
-				}
-			}
-		}
-	})
-	return plan
-}
-
-// func testLinearGraph() {
-// 	gb := NewGraphBuilder()
-// 	gb.AddRuleProduces("r1", parseProps("p:a1"))
-// 	gb.AddRuleConsumes("r2", false, parseProps("p:a1"))
-// 	gb.AddRuleProduces("r2", parseProps("p:a2"))
-// 	gb.AddRuleConsumes("r3", false, parseProps("p:a3"))
-// 	g := gb.Build()
-// 	assert(len(g.roots) == 1)
-// }
-
-// func testForkJoinGraph() {
-// 	gb := NewGraphBuilder()
-// 	gb.AddRuleProduces("r1", parseProps("p1:a1", "p2:a1"))
-// 	gb.AddRuleConsumes("r2", false, parseProps("p1:a1"))
-// 	gb.AddRuleProduces("r2", parseProps("p2:a2"))
-// 	gb.AddRuleConsumes("r3", false, parseProps("p2:a1"))
-// 	gb.AddRuleProduces("r3", parseProps("p2:a2"))
-// 	gb.AddRuleConsumes("r4", false, parseProps("p2:a2"))
-// 	g := gb.Build()
-// 	assert(len(g.roots) == 1)
-// }
-
-//////

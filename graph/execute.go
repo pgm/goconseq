@@ -159,3 +159,45 @@ func (e *ExecutionPlan) GetNext() []string {
 // names = ExecutionPlan.GetNext()
 // ...ExecutionPlan.Started(name)
 // ...ExecutionPlan.Completed(completed_name)
+
+func ConstructExecutionPlan(g *Graph) *ExecutionPlan {
+	// TODO: Doesn't support "forall". Revisit considering using "group by" instead of all
+	plan := NewExecutionPlan()
+	g.ForEachRule(func(r *rule) {
+		// precursor string, successor string, waitForAll bool
+		if len(r.consumes) == 0 {
+			plan.AddDependency(InitialState, r.name, false)
+		} else {
+			for _, a := range r.consumes {
+				for _, precursor := range a.artifact.producedBy {
+					plan.AddDependency(precursor.name, r.name, false)
+				}
+			}
+		}
+	})
+	return plan
+}
+
+// func testLinearGraph() {
+// 	gb := NewGraphBuilder()
+// 	gb.AddRuleProduces("r1", parseProps("p:a1"))
+// 	gb.AddRuleConsumes("r2", false, parseProps("p:a1"))
+// 	gb.AddRuleProduces("r2", parseProps("p:a2"))
+// 	gb.AddRuleConsumes("r3", false, parseProps("p:a3"))
+// 	g := gb.Build()
+// 	assert(len(g.roots) == 1)
+// }
+
+// func testForkJoinGraph() {
+// 	gb := NewGraphBuilder()
+// 	gb.AddRuleProduces("r1", parseProps("p1:a1", "p2:a1"))
+// 	gb.AddRuleConsumes("r2", false, parseProps("p1:a1"))
+// 	gb.AddRuleProduces("r2", parseProps("p2:a2"))
+// 	gb.AddRuleConsumes("r3", false, parseProps("p2:a1"))
+// 	gb.AddRuleProduces("r3", parseProps("p2:a2"))
+// 	gb.AddRuleConsumes("r4", false, parseProps("p2:a2"))
+// 	g := gb.Build()
+// 	assert(len(g.roots) == 1)
+// }
+
+//////

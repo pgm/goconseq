@@ -149,6 +149,9 @@ func (db *DB) UpdateAppliedRuleComplete(ID int, Outputs []*Artifact) error {
 	db.writer.Commit()
 
 	for _, output := range Outputs {
+		if _, exists := db.currentArtifacts[output.id]; exists {
+			return fmt.Errorf("Cannot record completion of applied rule because artifact is already in session: %v", output)
+		}
 		db.currentArtifacts[output.id] = output
 	}
 
@@ -214,15 +217,36 @@ func (db *DB) UpdateFile(fileID int, localPath string, globalPath string) *File 
 	return file
 }
 
-func (db *DB) FindAppliedRuleInHistory(name string, inputs *Bindings) {
-	panic("unimp")
+func (db *DB) GetAppliedRuleFromHistory(name string, inputs *Bindings) *AppliedRule {
+	var found *AppliedRule
+	for _, appliedRule := range db.appliedRuleHistoryByID {
+		if appliedRule.Name == name && inputs.Hash() == appliedRule.Inputs.Hash() {
+			if found == nil {
+				found = appliedRule
+			} else {
+				panic("Too many matches")
+			}
+		}
+	}
+	return found
 }
 
-func (db *DB) FindArtifactInHistory(props *ArtifactProperties) {
-	panic("unimp")
+func (db *DB) GetArtifactFromHistory(props *ArtifactProperties) *Artifact {
+	var found *Artifact
+	propsHash := props.Hash()
+	for _, artifact := range db.artifactHistoryByID {
+		if artifact.Properties.Hash() == propsHash {
+			if found == nil {
+				found = artifact
+			} else {
+				panic("Too many matches")
+			}
+		}
+	}
+	return found
 }
 
-func (db *DB) DeleteAppliedRule(ID int) {
+func (db *DB) DeleteAppliedRule(ID int) error {
 	app := db.appliedRuleHistoryByID[ID]
 	appsToDelete := []*AppliedRule{app}
 	appsToDelete = append(appsToDelete, FindApplicationsDownstreamOfApplication(app)...)
@@ -234,6 +258,7 @@ func (db *DB) DeleteAppliedRule(ID int) {
 		db.writer.WriteDeleteAppliedRule(app.ID)
 	}
 	db.writer.Commit()
+	return nil
 }
 
 func FindRuleApplicationsWithInput(artifact *Artifact) []*AppliedRule {

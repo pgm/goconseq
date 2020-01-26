@@ -149,8 +149,8 @@ func TestRun3RuleChain(t *testing.T) {
 			run 'date'
 
 		rule y:
-			inputs: in={'type': 'x-out'}
-			outputs: {'type': 'y-out'}
+			inputs: x={'type': 'x-out'}
+			outputs: {'type': 'y-out', 'parent':'{{ inputs.x.value }}'}
 			run 'date'
 	`)
 	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
@@ -161,4 +161,96 @@ func TestRun3RuleChain(t *testing.T) {
 	assert.Equal(t, 1, len(aOut))
 	assert.Equal(t, 2, len(xOut))
 	assert.Equal(t, 2, len(yOut))
+	parentValues := []string{yOut[0].Properties.Strings["parent"], yOut[1].Properties.Strings["parent"]}
+	assert.ElementsMatch(t, []string{"1", "2"}, parentValues)
+	db.Close()
+}
+
+func setupLocalExec(config *model.Config, stateDir string) {
+	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
+}
+
+func TestRunTwice(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(stateDir)
+
+	initialTwoRules := `
+		rule a:
+			outputs: {'type': 'a-out'}
+
+		rule b:
+			inputs: a={'type': 'a-out'}
+			outputs: {'type': 'b-out'}
+	`
+
+	db, config := parseRules(stateDir, initialTwoRules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+
+	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+	bOut := db.FindArtifacts(map[string]string{"type": "b-out"})
+	assert.Equal(t, 1, len(aOut))
+	assert.Equal(t, 1, len(bOut))
+	db.Close()
+
+	// reopen db and execute the same rules. Should be a no-op
+	db, config = parseRules(stateDir, initialTwoRules)
+	stats = run(context.Background(), config, db)
+	assert.Equal(t, 0, stats.Executions)
+	assert.Equal(t, 0, stats.SuccessfulCompletions)
+	assert.Equal(t, 2, stats.ExistingAppliedRules)
+	db.Close()
+}
+
+func TestRunChangedRules(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(stateDir)
+
+	initialTwoRules := `
+		rule a:
+			outputs: {'type': 'a-out'}
+
+		rule b1:
+			inputs: a={'type': 'a-out'}
+			outputs: {'type': 'b-out', 'value': '1'}
+	`
+
+	db, config := parseRules(stateDir, initialTwoRules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+	db.Close()
+
+	// reopen db and execute the same rules. Should be a no-op
+	db, config = parseRules(stateDir, `
+	rule a:
+		outputs: {'type': 'a-out'}
+
+	rule b2:
+		inputs: a={'type': 'a-out'}
+		outputs: {'type': 'b-out', 'value': '2'}
+`)
+	setupLocalExec(config, stateDir)
+	stats = run(context.Background(), config, db)
+	assert.Equal(t, 1, stats.Executions)
+	assert.Equal(t, 1, stats.SuccessfulCompletions)
+	assert.Equal(t, 1, stats.ExistingAppliedRules)
+
+	bOut := db.FindArtifacts(map[string]string{"type": "b-out"})
+	assert.Equal(t, 1, len(bOut))
+	assert.Equal(t, "2", bOut[0].Properties.Strings["value"])
+	db.Close()
 }

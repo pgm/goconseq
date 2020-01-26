@@ -77,7 +77,7 @@ func GetPendingRuleApplications(db *persist.DB,
 		if application := db.FindAppliedRule(name, inputs); application != nil {
 			// this has already been run in the current session so ignore it
 			log.Printf("This rule application was already executed in the current session. Is this case possible?")
-		} else if application := db.FindAppliedRuleInHistory(name, inputs); application != nil {
+		} else if application := db.GetAppliedRuleFromHistory(name, inputs); application != nil {
 			// this has already been run in a past session,
 			pending = append(pending, PendingRuleApplication{name: name, inputs: inputs, existing: application})
 		} else {
@@ -120,6 +120,14 @@ func expandTemplate(s string, inputs *persist.Bindings) string {
 	return result
 }
 
+func transformMapValues(orig map[string]string, transform func(string) string) map[string]string {
+	m := make(map[string]string)
+	for k, value := range orig {
+		m[k] = transform(value)
+	}
+	return m
+}
+
 func renderOutputsAsText(outputs []map[string]string) string {
 	j, err := json.Marshal(outputs)
 	if err != nil {
@@ -141,7 +149,11 @@ func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bind
 		result[i] = &model.RunWithStatement{Executable: expandTemplate(r.Executable, inputs), Script: expandTemplate(r.Script, inputs)}
 	}
 	if outputs != nil {
-		outputsText := renderOutputsAsText(outputs)
+		expandedOutputs := make([]map[string]string, len(outputs))
+		for i, output := range outputs {
+			expandedOutputs[i] = transformMapValues(output, func(x string) string { return expandTemplate(x, inputs) })
+		}
+		outputsText := renderOutputsAsText(expandedOutputs)
 		result = append(result, &model.RunWithStatement{Executable: outputsText})
 	}
 	return result
@@ -157,10 +169,20 @@ type RunningRuleApplication struct {
 // if not, run rule. Upon completion, look up each artifact. If existing, attach as output, otherwise create a new one
 //
 
-func run(context context.Context, config *model.Config, db *persist.DB) {
+type RunStats struct {
+	RuleEvaluations       int
+	ExistingAppliedRules  int
+	Executions            int
+	SuccessfulCompletions int
+	FailedCompletions     int
+}
+
+func run(context context.Context, config *model.Config, db *persist.DB) *RunStats {
+	var stats RunStats
+
 	// load rules into memory
 	plan := rulesToExecutionPlan(config.Rules)
-	listenerUpdates := make(chan *Update)
+	listenerUpdates := make(chan *Update, 100)
 
 	// blocking call which waits until a running execution completes
 	getNextCompletion := func() (int, *model.CompletionState) {
@@ -185,10 +207,15 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 		completions = make([]string, 0, len(next))
 
 		for _, name := range next {
+			stats.RuleEvaluations++
+
 			query := config.Rules[name].Query
 			pendings := GetPendingRuleApplications(db, name, query)
+
 			for _, pending := range pendings {
 				if pending.existing == nil {
+					stats.Executions++
+
 					appID := db.GetNextApplicationID()
 
 					resumeState := startExec(context, config, appID, pending.name, pending.inputs, listenerUpdates)
@@ -202,7 +229,10 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 					plan.Started(pending.name)
 					running[appliedRule.ID] = &RunningRuleApplication{Name: appliedRule.Name}
 				} else {
+					stats.ExistingAppliedRules++
+
 					db.AddAppliedRuleToCurrent(pending.existing.ID)
+					plan.Started(pending.name)
 					completions = append(completions, pending.name)
 				}
 			}
@@ -262,12 +292,15 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 		}
 
 		if success {
+			stats.SuccessfulCompletions++
+
 			// write all of the artifacts to the DB
 			outputArtifacts := make([]*persist.Artifact, len(outputs))
 			for i, props := range outputs {
-				artifact := db.FindArtifactInHistory(props)
+				artifact := db.GetArtifactFromHistory(props)
 				if artifact == nil {
-					artifact, err := db.PersistArtifact(props)
+					var err error
+					artifact, err = db.PersistArtifact(props)
 					if err != nil {
 						panic(err)
 					}
@@ -276,12 +309,17 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			}
 
 			// mark applied rule as complete
-			db.UpdateAppliedRuleComplete(ruleApplicationID, outputArtifacts)
+			err := db.UpdateAppliedRuleComplete(ruleApplicationID, outputArtifacts)
+			if err != nil {
+				panic(err)
+			}
 
 			// notify the scheduler that this rule completed
 			appliedRule := db.GetAppliedRule(ruleApplicationID)
 			completionQueue = append(completionQueue, appliedRule.Name)
 		} else {
+			stats.FailedCompletions++
+
 			log.Printf("Error: %s", failureMessage)
 
 			err := db.DeleteAppliedRule(ruleApplicationID)
@@ -290,6 +328,8 @@ func run(context context.Context, config *model.Config, db *persist.DB) {
 			}
 		}
 	}
+
+	return &stats
 }
 
 func startExec(context context.Context, config *model.Config, id int, name string, inputs *persist.Bindings, listenerUpdates chan *Update) string {

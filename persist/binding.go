@@ -1,7 +1,14 @@
 package persist
 
+import (
+	"sort"
+	"strconv"
+	"strings"
+)
+
 type BindingValue interface {
 	GetArtifacts() []*Artifact
+	Hash() string
 }
 
 type Bindings struct {
@@ -22,8 +29,42 @@ func (m *MultipleArtifacts) GetArtifacts() []*Artifact {
 	return m.artifacts
 }
 
+func (m *MultipleArtifacts) Hash() string {
+	sb := strings.Builder{}
+	sb.WriteString("(")
+	for _, artifact := range m.artifacts {
+		sb.WriteString(strconv.Itoa(artifact.id))
+		sb.WriteString(",")
+	}
+	sb.WriteString(")")
+
+	return sb.String()
+}
+
 type SingleArtifact struct {
 	MultipleArtifacts
+}
+
+func (b *Bindings) Hash() string {
+	keys := make([]string, len(b.ByName))
+	i := 0
+	for name := range b.ByName {
+		keys[i] = name
+		i++
+	}
+	sort.Strings(keys)
+
+	sb := strings.Builder{}
+	sb.WriteString("(")
+	for _, name := range keys {
+		sb.WriteString(escapeStr(name))
+		sb.WriteString(":")
+		value := b.ByName[name]
+		sb.WriteString(value.Hash())
+		sb.WriteString(",")
+	}
+	sb.WriteString(")")
+	return sb.String()
 }
 
 func (b *Bindings) AddArtifacts(name string, artifacts []*Artifact) {
@@ -33,8 +74,6 @@ func (b *Bindings) AddArtifacts(name string, artifacts []*Artifact) {
 func (b *Bindings) AddArtifact(name string, artifact *Artifact) {
 	b.ByName[name] = &SingleArtifact{MultipleArtifacts: MultipleArtifacts{[]*Artifact{artifact}}}
 }
-
-
 
 func (b *Bindings) Transform(transform func(artifact *Artifact) *Artifact) *Bindings {
 	nb := NewBindings()

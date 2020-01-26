@@ -1,6 +1,7 @@
 package persist
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -27,6 +28,7 @@ func (ap *ArtifactProperties) Hash() string {
 		stringsKeys[i] = name
 		i++
 	}
+	sort.Strings(stringsKeys)
 
 	filesKeys := make([]string, len(ap.Files))
 	i = 0
@@ -34,6 +36,7 @@ func (ap *ArtifactProperties) Hash() string {
 		filesKeys[i] = name
 		i++
 	}
+	sort.Strings(filesKeys)
 
 	b := strings.Builder{}
 	for _, name := range stringsKeys {

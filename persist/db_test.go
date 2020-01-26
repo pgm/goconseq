@@ -123,5 +123,4 @@ func TestSimpleQuery(t *testing.T) {
 
 	assert.Equal(t, 2, len(db.artifactHistoryByID))
 	assert.Equal(t, 2, len(db.artifactHistoryByHash))
-
 }

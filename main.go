@@ -2,7 +2,10 @@ package goconseq
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -54,6 +57,7 @@ func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 
 type PendingRuleApplication struct {
 	name     string
+	hash     string
 	inputs   *persist.Bindings
 	existing *persist.AppliedRule
 }
@@ -61,6 +65,7 @@ type PendingRuleApplication struct {
 // given a rule that could be applied, determine the rules applications we should create
 func GetPendingRuleApplications(db *persist.DB,
 	name string,
+	hash string,
 	query *persist.Query) []PendingRuleApplication {
 
 	pending := make([]PendingRuleApplication, 0)
@@ -74,15 +79,15 @@ func GetPendingRuleApplications(db *persist.DB,
 	}
 
 	for _, inputs := range rows {
-		if application := db.FindAppliedRule(name, inputs); application != nil {
+		if application := db.FindAppliedRule(name, hash, inputs); application != nil {
 			// this has already been run in the current session so ignore it
 			log.Printf("This rule application was already executed in the current session. Is this case possible?")
-		} else if application := db.GetAppliedRuleFromHistory(name, inputs); application != nil {
+		} else if application := db.GetAppliedRuleFromHistory(name, hash, inputs); application != nil {
 			// this has already been run in a past session,
-			pending = append(pending, PendingRuleApplication{name: name, inputs: inputs, existing: application})
+			pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs, existing: application})
 		} else {
 			// this has never run, add it to our list of things to run
-			pending = append(pending, PendingRuleApplication{name: name, inputs: inputs})
+			pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs})
 		}
 	}
 
@@ -128,22 +133,47 @@ func transformMapValues(orig map[string]string, transform func(string) string) m
 	return m
 }
 
-func renderOutputsAsText(outputs []map[string]string) string {
-	j, err := json.Marshal(outputs)
+func transformRuleOutput(orig *model.RuleOutput, fileLookup func(int) string, transform func(string) string) map[string]string {
+	m := make(map[string]string)
+	for _, prop := range orig.Properties {
+		if prop.HasValue() {
+			m[prop.Name] = transform(prop.Value)
+		} else {
+			path := fileLookup(prop.FileID)
+			log.Printf("fileLookup(%d)=%s", prop.FileID, path)
+			m[prop.Name] = path
+		}
+	}
+	return m
+}
+
+func renderOutputsAsText(builder model.ExecutionBuilder, outputs []map[string]string) string {
+	results := make(map[string]interface{})
+	results["outputs"] = outputs
+	j, err := json.Marshal(results)
 	if err != nil {
+		panic(err)
+	}
+	outputsAsJsonPath, err := builder.AddFile(j)
+	if err != nil {
+		// todo handle gracefully
 		panic(err)
 	}
 
 	var sb strings.Builder
-	sb.WriteString("cat > results.json <<EOF\n")
-	sb.WriteString("{\"outputs\": ")
-	sb.Write(j)
-	sb.WriteString("}\n")
-	sb.WriteString("EOF\n")
+	sb.WriteString("cp ")
+	sb.WriteString(outputsAsJsonPath)
+	sb.WriteString(" results.json")
+	// > results.json <<EOF\n")
+	// sb.WriteString("{\"outputs\": ")
+	// sb.Write(j)
+	// sb.WriteString("}\n")
+	// sb.WriteString("EOF\n")
 	return sb.String()
 }
 
-func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bindings, outputs []map[string]string) []*model.RunWithStatement {
+func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bindings, outputs []model.RuleOutput,
+	localPathLookup func(fileID int) string, builder model.ExecutionBuilder) []*model.RunWithStatement {
 	result := make([]*model.RunWithStatement, len(runWith))
 	for i, r := range runWith {
 		result[i] = &model.RunWithStatement{Executable: expandTemplate(r.Executable, inputs), Script: expandTemplate(r.Script, inputs)}
@@ -151,9 +181,13 @@ func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bind
 	if outputs != nil {
 		expandedOutputs := make([]map[string]string, len(outputs))
 		for i, output := range outputs {
-			expandedOutputs[i] = transformMapValues(output, func(x string) string { return expandTemplate(x, inputs) })
+			expandedOutputs[i] = transformRuleOutput(&output,
+				localPathLookup,
+				func(x string) string {
+					return expandTemplate(x, inputs)
+				})
 		}
-		outputsText := renderOutputsAsText(expandedOutputs)
+		outputsText := renderOutputsAsText(builder, expandedOutputs)
 		result = append(result, &model.RunWithStatement{Executable: outputsText})
 	}
 	return result
@@ -177,8 +211,69 @@ type RunStats struct {
 	FailedCompletions     int
 }
 
+func computeSha256(filename string) (string, error) {
+	hasher := sha256.New()
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func AddArtifactRule(c *model.Config, fileRepo model.FileRepository) {
+	outputs := make([]model.RuleOutput, 0, len(c.Artifacts))
+
+	for _, artifact := range c.Artifacts {
+		output := model.RuleOutput{Properties: make([]model.RuleOutputProperty, 0, len(artifact))}
+
+		if typeValue, ok := artifact["type"]; ok && typeValue == model.FileRefType {
+			// special case: is this artifact a file reference? If so, translate the filename into a FileID
+			filename := artifact["filename"]
+			sha256, err := computeSha256(filename)
+			if err != nil {
+				log.Panicf("Could not read %s: %s", filename, err)
+			}
+
+			fileID := fileRepo.AddFileOrFind(filename, sha256)
+
+			output.AddPropertyString("type", model.FileRefType)
+			output.AddPropertyString("sha256", sha256)
+			output.AddPropertyString("filename", filename)
+			output.AddPropertyFileID("fileID", fileID)
+		} else {
+			// otherwise, copy this to an output artifact
+			for key, value := range artifact {
+				output.AddPropertyString(key, value)
+			}
+		}
+
+		outputs = append(outputs, output)
+	}
+
+	rule := &model.Rule{Name: "<artifact rule>",
+		Outputs:      outputs,
+		ExecutorName: model.DefaultExecutorName}
+
+	c.AddRule(rule)
+}
+
 func run(context context.Context, config *model.Config, db *persist.DB) *RunStats {
 	var stats RunStats
+
+	localPathLookup := func(fileID int) string {
+		return db.GetFile(fileID).LocalPath
+	}
+
+	// make a synthetic rule which emits all the artifacts in the config
+	if len(config.Artifacts) > 0 {
+		AddArtifactRule(config, db)
+	}
 
 	// load rules into memory
 	plan := rulesToExecutionPlan(config.Rules)
@@ -209,8 +304,11 @@ func run(context context.Context, config *model.Config, db *persist.DB) *RunStat
 		for _, name := range next {
 			stats.RuleEvaluations++
 
-			query := config.Rules[name].Query
-			pendings := GetPendingRuleApplications(db, name, query)
+			rule := config.Rules[name]
+			query := rule.Query
+			hash := rule.Hash()
+			log.Printf("rule %s hash: %s", name, hash)
+			pendings := GetPendingRuleApplications(db, name, hash, query)
 
 			for _, pending := range pendings {
 				if pending.existing == nil {
@@ -218,8 +316,8 @@ func run(context context.Context, config *model.Config, db *persist.DB) *RunStat
 
 					appID := db.GetNextApplicationID()
 
-					resumeState := startExec(context, config, appID, pending.name, pending.inputs, listenerUpdates)
-					appliedRule, err := db.PersistAppliedRule(appID, pending.name, pending.inputs, resumeState)
+					resumeState := startExec(context, config, localPathLookup, appID, pending.name, pending.inputs, listenerUpdates)
+					appliedRule, err := db.PersistAppliedRule(appID, pending.name, pending.hash, pending.inputs, resumeState)
 					if err != nil {
 						return nil, err
 					}
@@ -332,7 +430,7 @@ func run(context context.Context, config *model.Config, db *persist.DB) *RunStat
 	return &stats
 }
 
-func startExec(context context.Context, config *model.Config, id int, name string, inputs *persist.Bindings, listenerUpdates chan *Update) string {
+func startExec(context context.Context, config *model.Config, localPathLookup func(fileID int) string, id int, name string, inputs *persist.Bindings, listenerUpdates chan *Update) string {
 	listener := &execListener{ruleApplicationID: id, c: listenerUpdates}
 	rule := config.Rules[name]
 	executorName := rule.ExecutorName
@@ -341,7 +439,7 @@ func startExec(context context.Context, config *model.Config, id int, name strin
 	localizedInputs := inputs.Transform(func(artifact *persist.Artifact) *persist.Artifact {
 		return localizeArtifact(builder, artifact)
 	})
-	runStatements := expandRunStatements(rule.RunStatements, localizedInputs, rule.Outputs)
+	runStatements := expandRunStatements(rule.RunStatements, localizedInputs, rule.Outputs, localPathLookup, builder)
 	builder.Prepare(runStatements)
 
 	process, err := builder.Start(context)

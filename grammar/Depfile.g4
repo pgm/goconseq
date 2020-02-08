@@ -15,7 +15,9 @@ run_statement: 'run' quoted_string ('with' quoted_string)?;
 
 input_bindings: 'inputs' ':' binding (',' binding)*;
 
-binding: IDENTIFIER '=' json_obj;
+filename_ref: 'filename' '(' quoted_string ')';
+
+binding: IDENTIFIER '=' ( json_obj | filename_ref);
 
 output: 'outputs' ':' json_obj (',' json_obj)*;
 

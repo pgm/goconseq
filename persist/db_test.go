@@ -2,15 +2,43 @@ package persist
 
 import (
 	"io/ioutil"
+	"os"
 	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJoinedQuery(t *testing.T) {
-	stateDir, err := ioutil.TempDir("", "TestJoinedQuery")
+func TestAddFiles(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
 	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
+
+	fn := path.Join(stateDir, "sample")
+	f, err := os.Create(fn)
+	assert.Nil(t, err)
+	f.WriteString("x")
+	f.Close()
+
+	dir := path.Join(stateDir, "db")
+	db := NewDB(dir)
+
+	fileID := db.AddFile(fn, "abc")
+	assert.True(t, fileID > 0)
+	db.Close()
+
+	db = NewDB(dir)
+	ff := db.files[fileID]
+	assert.Equal(t, fileID, ff.FileID)
+	assert.Equal(t, fn, ff.LocalPath)
+	assert.Equal(t, "abc", ff.SHA256)
+	db.Close()
+}
+
+func TestJoinedQuery(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
 
 	dir := path.Join(stateDir, "db")
 	db := NewDB(dir)
@@ -21,7 +49,7 @@ func TestJoinedQuery(t *testing.T) {
 	steveAddress, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"type": "address", "name": "steve"}})
 	appID := db.GetNextApplicationID()
 
-	app, err := db.PersistAppliedRule(appID, "init", NewBindings(), "")
+	app, err := db.PersistAppliedRule(appID, "init", "hash", NewBindings(), "")
 	db.UpdateAppliedRuleComplete(app.ID, []*Artifact{joePerson, joeAddress, stevePerson, steveAddress})
 	assert.Nil(t, err)
 
@@ -78,7 +106,7 @@ func TestSimpleQuery(t *testing.T) {
 	a1, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"prop": "true", "common": "shared"}})
 	a2, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"prop": "false", "common": "shared"}})
 	appID := db.GetNextApplicationID()
-	app, err := db.PersistAppliedRule(appID, "init", NewBindings(), "")
+	app, err := db.PersistAppliedRule(appID, "init", "hash", NewBindings(), "")
 	db.UpdateAppliedRuleComplete(app.ID, []*Artifact{a1, a2})
 	assert.Nil(t, err)
 

@@ -5,17 +5,22 @@ import "sort"
 type AppliedRule struct {
 	ID          int
 	Name        string
+	Hash        string
 	Inputs      *Bindings
 	Outputs     []*Artifact
 	ResumeState string
 }
 
-func (ar *AppliedRule) IsEquivilent(Name string, Inputs *Bindings) bool {
+func (ar *AppliedRule) IsEquivilent(Name string, Hash string, Inputs *Bindings) bool {
 	if ar.Name != Name {
 		return false
 	}
 
 	if !Inputs.Equals(ar.Inputs) {
+		return false
+	}
+
+	if ar.Hash != Hash {
 		return false
 	}
 

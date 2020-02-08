@@ -1,5 +1,11 @@
 package graph
 
+import (
+	"fmt"
+	"log"
+	"strings"
+)
+
 type rule struct {
 	name     string
 	produces []*artifact
@@ -9,6 +15,10 @@ type rule struct {
 type artifactRel struct {
 	isAll    bool
 	artifact *artifact
+}
+
+func (ar *artifactRel) String() string {
+	return fmt.Sprintf("{isAll=%b, artifact=%s}", ar.isAll, ar.artifact.String())
 }
 
 // GraphBuilder is a data structure which is incrementally constructed via Add.. methods and then Build() can be called
@@ -119,6 +129,17 @@ func (a *artifactIndex) Add(artifact *artifact) {
 	a.artifacts = append(a.artifacts, artifact)
 }
 
+func (a *artifactIndex) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("artifactIndex{")
+	for _, artifact := range a.artifacts {
+		sb.WriteString(artifact.String())
+		sb.WriteString(",\n")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
 func (a *artifactIndex) Find(queryProps *PropertiesTemplate) []*artifact {
 	matches := make([]*artifact, 0)
 	for _, candidate := range a.artifacts {
@@ -139,6 +160,7 @@ func (g *GraphBuilder) Build() *Graph {
 			index.Add(artifact)
 		}
 	}
+	log.Printf("Dumping index: %s", index.String())
 
 	// then for each consume relationship, find all matching artifacts and update the rule's consumes list
 	for name, r := range g.ruleByName {
@@ -147,8 +169,14 @@ func (g *GraphBuilder) Build() *Graph {
 			roots = append(roots, r)
 		} else {
 			for _, rel := range rels {
-				for _, match := range index.Find(rel.artifact.props) {
-					r.consumes = append(r.consumes, &artifactRel{isAll: rel.isAll, artifact: match})
+				log.Printf("consume rel %s: %s", name, rel.String())
+				matches := index.Find(rel.artifact.props)
+				if len(matches) > 0 {
+					for _, match := range matches {
+						r.consumes = append(r.consumes, &artifactRel{isAll: rel.isAll, artifact: match})
+					}
+				} else {
+					log.Printf("Warning: %s will never execute because no artifact will be created that satisfies %s", name, rel.String())
 				}
 			}
 		}

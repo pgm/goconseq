@@ -25,8 +25,11 @@ func TestParseAddIfMissing(t *testing.T) {
 	stmts, err := ParseString("add-if-missing {'x': 'b'}")
 	assert.Nil(t, err)
 	assert.Equal(t, len(stmts.Statements), 1)
-	stmt := stmts.Statements[0].(*AddIfMissingStatement)
-	assert.Equal(t, stmt.Artifact["x"], "b")
+	config := model.NewConfig()
+	stmts.Eval(config)
+	assert.Equal(t, 1, len(config.Artifacts))
+	artifact := config.Artifacts[0]
+	assert.Equal(t, artifact["x"], "b")
 }
 func TestParseRule(t *testing.T) {
 	log.Printf("%v", &antlr.Set{})
@@ -44,4 +47,15 @@ func TestParseFailure(t *testing.T) {
 	stmts, err := ParseString("let x = x")
 	assert.Nil(t, stmts)
 	assert.NotNil(t, err)
+}
+
+func TestParseRuleWithFileRef(t *testing.T) {
+	log.Printf("%v", &antlr.Set{})
+	stmts, err := ParseString("rule x: inputs: a=filename('sample') outputs: {'type': 'out'}")
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(stmts.Statements))
+	stmt := stmts.Statements[0].(*RuleStatement)
+	assert.Equal(t, "x", stmt.Name)
+	assert.Equal(t, "$filename_ref", stmt.Inputs["a"]["type"])
+	assert.Equal(t, "sample", stmt.Inputs["a"]["filename"])
 }

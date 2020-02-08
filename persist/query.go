@@ -1,6 +1,10 @@
 package persist
 
-import "github.com/pgm/goconseq/graph"
+import (
+	"log"
+
+	"github.com/pgm/goconseq/graph"
+)
 
 type StringPair struct {
 	first  string
@@ -25,6 +29,32 @@ type QueryBinding struct {
 type Query struct {
 	forEach []*QueryBinding
 	forAll  []*QueryBinding
+}
+
+func (q *QueryBinding) AsDict() map[string]interface{} {
+	log.Printf("Warning: QueryBinding is incomplete")
+	return map[string]interface{}{
+		"bindingVariable":     q.bindingVariable,
+		"constantConstraints": q.constantConstraints,
+	}
+}
+
+func queryBindingSliceAsDict(v []*QueryBinding) []interface{} {
+	nv := make([]interface{}, len(v))
+	for i := range v {
+		nv[i] = v[i].AsDict()
+	}
+	return nv
+}
+
+func (q *Query) AsDict() map[string]interface{} {
+	if q == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"forEach": queryBindingSliceAsDict(q.forEach),
+		"forAll":  queryBindingSliceAsDict(q.forAll)}
 }
 
 func (q *Query) IsEmpty() bool {

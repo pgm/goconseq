@@ -1,5 +1,7 @@
 package graph
 
+import "strings"
+
 type stringProperty struct {
 	Name  string
 	Value string
@@ -15,6 +17,27 @@ type artifact struct {
 	props      *PropertiesTemplate
 	consumedBy []*rule
 	producedBy []*rule
+}
+
+func (pt *PropertiesTemplate) String() string {
+	sb := strings.Builder{}
+	for sp := range pt.constProps {
+		sb.WriteString("{")
+		sb.WriteString(sp.Name)
+		sb.WriteString(",")
+		sb.WriteString(sp.Value)
+		sb.WriteString("}")
+	}
+	return sb.String()
+}
+
+func (a *artifact) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("artifact{")
+	sb.WriteString("props:")
+	sb.WriteString(a.props.String())
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (pp *PropertiesTemplate) ensureInitialized() {

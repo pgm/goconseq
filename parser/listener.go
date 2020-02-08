@@ -121,9 +121,31 @@ func (l *Listener) ExitVar_stmt(ctx *antlrparser.Var_stmtContext) {
 	l.Statements.Add(&LetStatement{Name: name, Value: value})
 }
 
+func mapFileRefArtifact(filename string) (map[string]string, map[string]string) {
+	fileQuery := map[string]string{"filename": filename, "type": model.FileRefType}
+	fileArtifact := map[string]string{"filename": filename, "type": model.FileRefType}
+
+	return fileQuery, fileArtifact
+}
+
 func (l *Listener) ExitBinding(ctx *antlrparser.BindingContext) {
+	var value map[string]string
+
 	name := ctx.IDENTIFIER().GetText()
-	value := l.PopStrMap()
+	if ctx.Json_obj() != nil {
+		value = l.PopStrMap()
+	} else {
+		// if not a json obj, then this is a filename ref
+		if ctx.Filename_ref() == nil {
+			panic("internal error")
+		}
+		filename := l.PopString()
+
+		var fileArtifact map[string]string
+		// query for finding file by filename
+		value, fileArtifact = mapFileRefArtifact(filename)
+		l.Statements.Add(&ArtifactStatement{fileArtifact})
+	}
 
 	l.Push(name)
 	l.Push(value)
@@ -140,14 +162,24 @@ func (l *Listener) ExitInput_bindings(ctx *antlrparser.Input_bindingsContext) {
 	l.CurRule.Inputs = bindings
 }
 
-func (l *Listener) ExitAdd_if_missing(ctx *antlrparser.Add_if_missingContext) {
-	artifact := l.PopStrMap()
-	l.Statements.Add(&AddIfMissingStatement{Artifact: artifact})
-}
-
 func (l *Listener) ExitOutput(ctx *antlrparser.OutputContext) {
 	for _ = range ctx.AllJson_obj() {
-		output := l.PopStrMap()
+		outputAsMap := l.PopStrMap()
+		output := model.RuleOutput{}
+		for k, v := range outputAsMap {
+			output.AddPropertyString(k, v)
+		}
 		l.CurRule.Outputs = append(l.CurRule.Outputs, output)
 	}
+}
+
+func (l *Listener) ExitFilename_ref(ctx *antlrparser.Filename_refContext) {
+	// pop/push filename to make the parameter is there
+	filename := l.PopString()
+	l.Push(filename)
+}
+
+func (l *Listener) ExitAdd_if_missing(ctx *antlrparser.Add_if_missingContext) {
+	artifact := l.PopStrMap()
+	l.Statements.Add(&ArtifactStatement{artifact})
 }

@@ -2,7 +2,9 @@ package goconseq
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"testing"
@@ -137,6 +139,7 @@ func TestRun3RuleChain(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	log.Printf("stateDir: " + stateDir)
 
 	db, config := parseRules(stateDir, `
 		rule a:
@@ -252,5 +255,120 @@ func TestRunChangedRules(t *testing.T) {
 	bOut := db.FindArtifacts(map[string]string{"type": "b-out"})
 	assert.Equal(t, 1, len(bOut))
 	assert.Equal(t, "2", bOut[0].Properties.Strings["value"])
+	db.Close()
+}
+
+//broken because we don't hash rules. We only detect rule name changes
+func TestInitialArtifact(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(stateDir)
+
+	initialRules := `
+		add-if-missing {'type': 'a-out', 'value': '1'}
+
+		rule b1:
+			inputs: a={'type': 'a-out'}
+			outputs: {'type': 'b-out'}
+	`
+
+	db, config := parseRules(stateDir, initialRules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+	db.Close()
+
+	// reopen db and execute a modified rule which should result in both running
+	db, config = parseRules(stateDir, `
+	add-if-missing {'type': 'a-out', 'value': '2'}
+
+	rule b1:
+		inputs: a={'type': 'a-out'}
+		outputs: {'type': 'b-out'}
+	`)
+
+	setupLocalExec(config, stateDir)
+	stats = run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+}
+
+func writeFile(filename string, content string) {
+	f, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	_, err = f.WriteString(content)
+	if err != nil {
+		panic(err)
+	}
+	f.Close()
+
+}
+
+func TestFileRef(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("stateDir: %s", stateDir)
+	//	defer os.RemoveAll(stateDir)
+
+	// create sample file
+	inputFileName := path.Join(stateDir, "sample")
+	writeFile(inputFileName, "{\"outputs\": [{\"type\": \"fromfile\"}]}")
+	log.Printf("wrote to %s", inputFileName)
+
+	rules := fmt.Sprintf(`
+		rule f:
+			inputs: src=filename("%s")
+		run "cp {{inputs.src.filename}} results.json"
+	`, inputFileName)
+
+	db, config := parseRules(stateDir, rules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+
+	bOut := db.FindArtifacts(map[string]string{"type": "fromfile"})
+	assert.Equal(t, 1, len(bOut))
+
+	db.Close()
+
+	// reopen db and execute the same rules. Should be a no-op
+	db, config = parseRules(stateDir, rules)
+
+	setupLocalExec(config, stateDir)
+	stats = run(context.Background(), config, db)
+	assert.Equal(t, 0, stats.Executions)
+	assert.Equal(t, 0, stats.SuccessfulCompletions)
+	assert.Equal(t, 2, stats.ExistingAppliedRules)
+
+	db.Close()
+
+	// mutate the file and verify the rule gets re-run
+	writeFile(inputFileName, "{\"outputs\": [{\"type\": \"fromfile2\"}]}")
+	db, config = parseRules(stateDir, rules)
+
+	setupLocalExec(config, stateDir)
+	stats = run(context.Background(), config, db)
+	assert.Equal(t, 2, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+
+	bOut = db.FindArtifacts(map[string]string{"type": "fromfile"})
+	assert.Equal(t, 0, len(bOut))
+	bOut = db.FindArtifacts(map[string]string{"type": "fromfile2"})
+	assert.Equal(t, 1, len(bOut))
+
 	db.Close()
 }

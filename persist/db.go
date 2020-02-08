@@ -15,6 +15,7 @@ type File struct {
 	FileID     int
 	LocalPath  string
 	GlobalPath string
+	SHA256     string
 }
 
 type DB struct {
@@ -49,11 +50,13 @@ func NewDB(stateDir string) *DB {
 	}
 
 	db := &DB{
+		nextID:                 1,
 		currentArtifacts:       make(map[int]*Artifact),
 		artifactHistoryByID:    make(map[int]*Artifact),
 		artifactHistoryByHash:  make(map[string]*Artifact),
 		currentAppliedRules:    make(map[int]*AppliedRule),
 		appliedRuleHistoryByID: make(map[int]*AppliedRule),
+		files:                  make(map[int]*File),
 		// appliedRuleHistoryByHash: make(map[string]*AppliedRule),
 		stateDir: stateDir}
 
@@ -105,9 +108,9 @@ func (db *DB) GetWorkDir(appliedRuleID int) string {
 }
 
 // all _read_ operations do not return errors because they only use memory. All _write_ operations return an error
-func (db *DB) FindAppliedRule(Name string, Inputs *Bindings) *AppliedRule {
+func (db *DB) FindAppliedRule(Name string, Hash string, Inputs *Bindings) *AppliedRule {
 	for _, appliedRule := range db.currentAppliedRules {
-		if appliedRule.IsEquivilent(Name, Inputs) {
+		if appliedRule.IsEquivilent(Name, Hash, Inputs) {
 			return appliedRule
 		}
 	}
@@ -119,8 +122,8 @@ func (db *DB) GetAppliedRule(id int) *AppliedRule {
 }
 
 // writes AppliedRule to history _and_ adds as a current rule application
-func (db *DB) PersistAppliedRule(ID int, Name string, Inputs *Bindings, ResumeState string) (*AppliedRule, error) {
-	appliedRule := &AppliedRule{ID: ID, Name: Name, Inputs: Inputs, ResumeState: ResumeState}
+func (db *DB) PersistAppliedRule(ID int, Name string, Hash string, Inputs *Bindings, ResumeState string) (*AppliedRule, error) {
+	appliedRule := &AppliedRule{ID: ID, Name: Name, Inputs: Inputs, ResumeState: ResumeState, Hash: Hash}
 
 	db.writer.WriteSetAppliedRule(appliedRule).Update(db)
 	db.writer.Commit()
@@ -183,9 +186,9 @@ func (db *DB) FindArtifacts(Properties map[string]string) []*Artifact {
 	return results
 }
 
-func (db *DB) AddFileGlobalPath(localPath string, globalPath string) *File {
+func (db *DB) AddFileGlobalPath(localPath string, globalPath string, sha256 string) *File {
 	fileID := db.nextID
-	file := &File{FileID: fileID, LocalPath: localPath, GlobalPath: globalPath}
+	file := &File{FileID: fileID, LocalPath: localPath, GlobalPath: globalPath, SHA256: sha256}
 	db.files[fileID] = file
 
 	db.writer.WriteSetNextIDs(db.nextID+1, db.nextAppliedRuleID).Update(db)
@@ -217,10 +220,10 @@ func (db *DB) UpdateFile(fileID int, localPath string, globalPath string) *File 
 	return file
 }
 
-func (db *DB) GetAppliedRuleFromHistory(name string, inputs *Bindings) *AppliedRule {
+func (db *DB) GetAppliedRuleFromHistory(name string, hash string, inputs *Bindings) *AppliedRule {
 	var found *AppliedRule
 	for _, appliedRule := range db.appliedRuleHistoryByID {
-		if appliedRule.Name == name && inputs.Hash() == appliedRule.Inputs.Hash() {
+		if appliedRule.IsEquivilent(name, hash, inputs) {
 			if found == nil {
 				found = appliedRule
 			} else {
@@ -282,6 +285,17 @@ func FindApplicationsDownstreamOfApplication(appliedRule *AppliedRule) []*Applie
 	}
 
 	return result
+}
+
+func (db *DB) AddFileOrFind(localPath, sha256 string) int {
+	for _, file := range db.files {
+		if file.SHA256 == sha256 {
+			return file.FileID
+		}
+	}
+
+	f := db.AddFileGlobalPath(localPath, "", sha256)
+	return f.FileID
 }
 
 // func (db *DB) FindAppliedRulesByName(name string) (*AppliedRule, error) {

@@ -11,18 +11,10 @@ type Statement interface {
 	Eval(config *model.Config) error
 }
 
-type AddIfMissingStatement struct {
-	Artifact map[string]string
-}
-
-func (s *AddIfMissingStatement) Eval(config *model.Config) error {
-	panic("unimp")
-}
-
 type RuleStatement struct {
 	Name              string
 	Inputs            map[string]map[string]string
-	Outputs           []map[string]string
+	Outputs           []model.RuleOutput
 	ExecutorName      string
 	RequiredResources map[string]float64
 	RunStatements     []*model.RunWithStatement
@@ -49,6 +41,15 @@ func (s *LetStatement) Eval(config *model.Config) error {
 		return fmt.Errorf("Cannot define %s as %s (already defined as %s)", s.Name, s.Value, existingValue)
 	}
 	config.Vars[s.Name] = s.Value
+	return nil
+}
+
+type ArtifactStatement struct {
+	Artifact map[string]string
+}
+
+func (s *ArtifactStatement) Eval(config *model.Config) error {
+	config.Artifacts = append(config.Artifacts, s.Artifact)
 	return nil
 }
 

@@ -43,12 +43,14 @@ type SetFileOp struct {
 	FileID     int
 	LocalPath  string
 	GlobalPath string
+	SHA256     string
 }
 
 func (op *SetFileOp) Update(db *DB) {
 	db.files[op.FileID] = &File{FileID: op.FileID,
 		LocalPath:  op.LocalPath,
-		GlobalPath: op.GlobalPath}
+		GlobalPath: op.GlobalPath,
+		SHA256:     op.SHA256}
 }
 
 func (op *SetFileOp) GetType() string {
@@ -99,6 +101,7 @@ type SetAppliedRuleOp struct {
 	Inputs      []*InputEntry
 	Outputs     []int
 	ResumeState string
+	Hash        string
 }
 
 type InputEntry struct {
@@ -130,7 +133,8 @@ func (op *SetAppliedRuleOp) Update(db *DB) {
 		Name:        op.Name,
 		Inputs:      inputs,
 		Outputs:     outputs,
-		ResumeState: op.ResumeState}
+		ResumeState: op.ResumeState,
+		Hash:        op.Hash}
 
 	db.appliedRuleHistoryByID[appliedRule.ID] = &appliedRule
 }
@@ -189,7 +193,8 @@ func (w *OpLogWriter) WriteSetFile(file *File) DBOp {
 	op := SetFileOp{
 		FileID:     file.FileID,
 		LocalPath:  file.LocalPath,
-		GlobalPath: file.GlobalPath}
+		GlobalPath: file.GlobalPath,
+		SHA256:     file.SHA256}
 	w.write(&op)
 
 	return &op
@@ -229,6 +234,7 @@ func (w *OpLogWriter) WriteSetAppliedRule(rule *AppliedRule) DBOp {
 		Name:        rule.Name,
 		Inputs:      inputs,
 		Outputs:     outputs,
+		Hash:        rule.Hash,
 		ResumeState: rule.ResumeState}
 
 	w.write(&op)

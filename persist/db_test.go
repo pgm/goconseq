@@ -23,7 +23,7 @@ func TestAddFiles(t *testing.T) {
 	dir := path.Join(stateDir, "db")
 	db := NewDB(dir)
 
-	fileID := db.AddFile(fn, "abc")
+	fileID := db.AddFileOrFind(fn, "abc")
 	assert.True(t, fileID > 0)
 	db.Close()
 

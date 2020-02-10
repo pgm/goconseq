@@ -38,7 +38,13 @@ func TestParseRule(t *testing.T) {
 	assert.Equal(t, 1, len(stmts.Statements))
 	stmt := stmts.Statements[0].(*RuleStatement)
 	assert.Equal(t, "x", stmt.Name)
-	assert.Equal(t, "out", stmt.Outputs[0]["type"])
+	outputType := ""
+	for _, prop := range stmt.Outputs[0].Properties {
+		if prop.Name == "type" {
+			outputType = prop.Value
+		}
+	}
+	assert.Equal(t, "out", outputType)
 	assert.Equal(t, "banana", stmt.Inputs["a"]["type"])
 }
 

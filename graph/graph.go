@@ -18,7 +18,7 @@ type artifactRel struct {
 }
 
 func (ar *artifactRel) String() string {
-	return fmt.Sprintf("{isAll=%b, artifact=%s}", ar.isAll, ar.artifact.String())
+	return fmt.Sprintf("{isAll=%v, artifact=%s}", ar.isAll, ar.artifact.String())
 }
 
 // GraphBuilder is a data structure which is incrementally constructed via Add.. methods and then Build() can be called

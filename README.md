@@ -73,25 +73,41 @@ These artifacts are essentially records with one or more named fields. Each fiel
 
 Conseq has three key concepts: "artifacts", "rules", and "applied rules" which are described in more detail below.
 
-### Artifact
+### Artifacts
 
-A record compromising of a set of key, value pairs. Values are either strings or file references. A file reference may refer to a local path, or a path to an object in google cloud storage (denoted with a "gs://" prefix such as `gsutil` uses). In either case, files are automatically transfered and localized to a path on the local filesystem before a rule is run.
+Artifacts comprise of a set of key-value pairs. Values are either strings or file references.
 
 Artifacts are generated as outputs from most rules, however, one can manually include artifacts in a conseq config file using an `artifact` statement. The artifact's fields are specified in syntax that is similar to python dictionaries.
 
-_Example artifact with two fields named "type" and "other":_
+_Example: artifact with two fields named "type" and "other":_
 
 ```
 artifact {'type': 'sample', 'other': 'value'}
 ```
 
-Conventionally, it can make it easier to query for artifacts by including a `type` field and having all artifacts with the same `type` use the same field names. However, this is only a common convention, and conseq does not require this to be the case nor make any assumptions based on the value of `type`.
+File references may refer to a local path, or a path to an object in google cloud storage (denoted with a "gs://" prefix such as `gsutil` uses). In either case, files are automatically transfered and localized to a path on the local filesystem before a rule is run. Thus, the `filename` annotation is needed so that conseq knows to treat this value as a file reference instead of a plain string.
 
-### Rule
+_Example: An artifact which references a local file_
+
+```
+artifact {'type': 'bam', 'path': filename('file1.bam')}
+```
+
+_Example: An artifact which references a file in google cloud storage_
+
+```
+artifact {'type': 'bam', 'path': filename('gs://bucket/file2.bam')}
+```
+
+One might notice that all the examples above included a `type` field.
+
+This is a convention that we commonly use, as we've found it's often easier to keep track of artifacts by adding a field named `type` and having all artifacts with the same value for `type` use the same field names. However, this is only a common convention, and conseq does not require this to be the case nor make any assumptions based on the value of `type`.
+
+### Rules
 
 A rule at minimium has a name and a query. In addition, rules typically will have one or more `run` statements describing scripts or commands which should be run when the rule executes. Whenever one or more new artifacts are found to satisfy the query, an a **applied rule** generated and the associated commands are executed.
 
-_Example rule which executes `date` for every time an artifact with `type=sample` is found_
+_Example: a rule which executes `date` for every time an artifact with `type=sample` is found_
 
 ```
 rule example_3:
@@ -101,10 +117,10 @@ rule example_3:
 
 In addition to saying `run` which will simply execute the string via the bash shell, one can include scripts inline by using the syntax `run "...interpreter..." with "...script body..."`
 
-_Example rule which runs a python script to print the time in seconds:_
+_Example: a rule which runs a python script to print the time in seconds_
 
 ```
-rule example_3:
+rule example_4:
   input: a={'type': 'sample'}
   run "python" with """
     import time
@@ -112,18 +128,25 @@ rule example_3:
     """
 ```
 
-In this example, the `"import time..."` block gets written to a temp file, and the command that actually runs is `python temp_file`
+In this example, the `"import time..."` block gets written to a temp file, and the command that actually actually runs is `python temp_file`. The use of "run ... with" is just convience syntax to make it possible to embed small scripts directly in the conseq config file and works well for a variety of scripting languages. (ie: `run "Rscript" with "..."`, `run "ruby" with "..."`, etc)
 
-### Applied Rule
+### Applied Rules
 
 An applied rule is created when a query associated with a rule finds artifacts and binds them to the variables in the `input:` section of the rule. These variables are can be referenced within `run` statements.
 
-_Example rule which runs a python script which prints the name from the input artifact_
+_Example: a rule which runs a python script which prints the name from the input artifact_
 
 ```
-rule example_4:
-  input: a={'type': 'person'}
+artifact {'type': 'person', 'name': 'Joe'}
+artifact {'type': 'person', 'name': 'Steve'}
+
+rule hello_person:
+  input: person={'type': 'person'}
   run "python" with """
-    print("{{a.name}}")
+    print("hello {{inputs.person.name}}")
     """
 ```
+
+Now, in this example, we have a single rule, which will execute twice. It will execute once printing "hello Joe" and once printing "hello Steve".
+
+There is a single rule, but since two artifacts are found, two **applied rules** are created. In each the `inputs.person` variable is bound to the artifact, and thus, we can get the name by referencing `inputs.person.name`.

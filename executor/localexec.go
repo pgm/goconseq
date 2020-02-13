@@ -1,4 +1,4 @@
-package goconseq
+package executor
 
 import (
 	"context"
@@ -23,8 +23,8 @@ type Files interface {
 }
 
 type LocalExec struct {
-	files  Files
-	jobDir string
+	Files  Files
+	JobDir string
 }
 
 type LocalExecBuilder struct {
@@ -192,11 +192,11 @@ func (l *LocalExecBuilder) Localize(fileID int) (string, error) {
 }
 
 func (e *LocalExec) Builder(jobIndex int) model.ExecutionBuilder {
-	workDir := e.jobDir + "/r" + strconv.Itoa(jobIndex)
+	workDir := e.JobDir + "/r" + strconv.Itoa(jobIndex)
 	os.MkdirAll(workDir, os.ModePerm)
 	return &LocalExecBuilder{
 		workDir: workDir,
-		files:   e.files}
+		files:   e.Files}
 }
 
 // // func (e *LocalExec) Localize(fileId int) (string, error) {

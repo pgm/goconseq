@@ -1,6 +1,8 @@
 package persist
 
 import (
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +16,27 @@ type ArtifactProperties struct {
 type Artifact struct {
 	id         int
 	Properties *ArtifactProperties
+}
+
+func (ap *ArtifactProperties) String() string {
+	m := make(map[string]interface{})
+	for k, v := range ap.Strings {
+		m[k] = v
+	}
+	for k, i := range ap.Files {
+		m[k] = fmt.Sprintf("<fileref %d>", i)
+	}
+
+	s, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+
+	return string(s)
+}
+
+func (a *Artifact) String() string {
+	return fmt.Sprintf("<artifact %d %s>", a.id, a.Properties.String())
 }
 
 func escapeStr(s string) string {

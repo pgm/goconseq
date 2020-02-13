@@ -1,4 +1,4 @@
-package goconseq
+package executor
 
 import (
 	"context"
@@ -48,8 +48,8 @@ func TestLocalExec(t *testing.T) {
 	breadcrumb := jobDir + "/breadcrumb"
 
 	l := &LocalExec{
-		files:  mockFiles,
-		jobDir: jobDir}
+		Files:  mockFiles,
+		JobDir: jobDir}
 
 	b := l.Builder(100)
 	b.Prepare([]*model.RunWithStatement{&model.RunWithStatement{Executable: "date"},

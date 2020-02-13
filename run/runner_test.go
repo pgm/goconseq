@@ -1,4 +1,4 @@
-package goconseq
+package run
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/pgm/goconseq/executor"
 	"github.com/pgm/goconseq/model"
 	"github.com/pgm/goconseq/parser"
 	"github.com/pgm/goconseq/persist"
@@ -156,7 +157,7 @@ func TestRun3RuleChain(t *testing.T) {
 			outputs: {'type': 'y-out', 'parent':'{{ inputs.x.value }}'}
 			run 'date'
 	`)
-	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
+	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{jobDir: stateDir}
 	run(context.Background(), config, db)
 	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
 	xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
@@ -170,7 +171,7 @@ func TestRun3RuleChain(t *testing.T) {
 }
 
 func setupLocalExec(config *model.Config, stateDir string) {
-	config.Executors[model.DefaultExecutorName] = &LocalExec{jobDir: stateDir}
+	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{jobDir: stateDir}
 }
 
 func TestRunTwice(t *testing.T) {

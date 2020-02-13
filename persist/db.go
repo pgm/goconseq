@@ -152,8 +152,9 @@ func (db *DB) UpdateAppliedRuleComplete(ID int, Outputs []*Artifact) error {
 	db.writer.Commit()
 
 	for _, output := range Outputs {
+		log.Printf("adding output.id=%d", output.id)
 		if _, exists := db.currentArtifacts[output.id]; exists {
-			return fmt.Errorf("Cannot record completion of applied rule because artifact is already in session: %v", output)
+			return fmt.Errorf("Cannot record completion of applied rule because artifact is already in session: %v", output.String())
 		}
 		db.currentArtifacts[output.id] = output
 	}

@@ -1,0 +1,7 @@
+rule a:
+  outputs: {'type': 'a-out', 'value':'1'}, {'type': 'a-out', 'value':'2'}
+
+rule b:
+  inputs: a={'type': 'a-out'}
+  outputs: {'type': 'b-out', 'value': '{{inputs.a.value}}'}
+  run "echo {{inputs.a.value}}"

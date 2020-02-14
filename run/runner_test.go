@@ -136,11 +136,9 @@ func parseRules(stateDir string, rules string) (*persist.DB, *model.Config) {
 }
 
 func TestRun3RuleChain(t *testing.T) {
-	stateDir, err := ioutil.TempDir("", "TestSimpleSingleRuleRun")
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("stateDir: " + stateDir)
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
 
 	db, config := parseRules(stateDir, `
 		rule a:
@@ -157,7 +155,7 @@ func TestRun3RuleChain(t *testing.T) {
 			outputs: {'type': 'y-out', 'parent':'{{ inputs.x.value }}'}
 			run 'date'
 	`)
-	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{jobDir: stateDir}
+	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{JobDir: stateDir}
 	run(context.Background(), config, db)
 	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
 	xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
@@ -171,7 +169,35 @@ func TestRun3RuleChain(t *testing.T) {
 }
 
 func setupLocalExec(config *model.Config, stateDir string) {
-	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{jobDir: stateDir}
+	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{JobDir: stateDir}
+}
+
+func TestConflictingOutputs(t *testing.T) {
+	// make sure that if we have two rules make the same output, it's considered a failure
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
+
+	initialTwoRules := `
+	rule a1:
+		outputs: {'type': 'a-out'}
+
+	rule a2:
+		outputs: {'type': 'a-out'}
+
+	rule b:
+		inputs: a={'type': 'a-out'}
+		outputs: {'type': 'b-out'}
+	`
+
+	db, config := parseRules(stateDir, initialTwoRules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 3, stats.Executions)
+	assert.Equal(t, 2, stats.SuccessfulCompletions)
+	assert.Equal(t, 1, stats.FailedCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
 }
 
 func TestRunTwice(t *testing.T) {

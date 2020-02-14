@@ -96,9 +96,83 @@ func TestJoinedQuery(t *testing.T) {
 	assert.Equal(t, newJoePerson.Properties.Hash(), joePerson.Properties.Hash())
 }
 
-func TestSimpleQuery(t *testing.T) {
-	stateDir, err := ioutil.TempDir("", "TestSimpleQuery")
+func TestFindRuleApplicationsWithInput(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
 	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
+
+	dir := path.Join(stateDir, "db")
+	db := NewDB(dir)
+
+	joe, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"name": "joe"}})
+	mary, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"name": "mary"}})
+	steve, _ := db.PersistArtifact(&ArtifactProperties{Strings: map[string]string{"name": "steve"}})
+
+	saveAppWithArtifact := func(artifact *Artifact) *AppliedRule {
+		appID := db.GetNextApplicationID()
+		app, err := db.PersistAppliedRule(appID, "gen_"+artifact.Properties.Strings["name"], "hash", NewBindings(), "")
+		assert.Nil(t, err)
+		err = db.UpdateAppliedRuleComplete(app.ID, []*Artifact{artifact})
+		assert.Nil(t, err)
+		return app
+	}
+
+	saveMergedApp := func() *AppliedRule {
+		appID := db.GetNextApplicationID()
+		bindings := NewBindings()
+		bindings.AddArtifact("person1", joe)
+		bindings.AddArtifact("person2", mary)
+		app, err := db.PersistAppliedRule(appID, "merge", "hash", bindings, "")
+		assert.Nil(t, err)
+		err = db.UpdateAppliedRuleComplete(app.ID, []*Artifact{steve})
+		assert.Nil(t, err)
+		return app
+	}
+
+	app1 := saveAppWithArtifact(joe)
+	app2 := saveAppWithArtifact(mary)
+	app3 := saveMergedApp()
+
+	// make sure find apps via input works for all three artifacts
+	assert.Empty(t, db.FindRuleApplicationsWithInput(steve))
+
+	apps := db.FindRuleApplicationsWithInput(joe)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	apps = db.FindRuleApplicationsWithInput(mary)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	// make sure find downstream of apps works
+	apps = db.FindApplicationsDownstreamOfApplication(app1.ID)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	apps = db.FindApplicationsDownstreamOfApplication(app2.ID)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	apps = db.FindApplicationsDownstreamOfApplication(app3.ID)
+	assert.Equal(t, 0, len(apps))
+
+	// make sure find downstream of artifact works
+	apps = db.FindApplicationsDownstreamOfArtifact(joe)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	apps = db.FindApplicationsDownstreamOfArtifact(mary)
+	assert.Equal(t, 1, len(apps))
+	assert.Equal(t, app3.ID, apps[0].ID)
+
+	apps = db.FindApplicationsDownstreamOfArtifact(steve)
+	assert.Equal(t, 0, len(apps))
+}
+
+func TestSimpleQuery(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
 
 	dir := path.Join(stateDir, "db")
 	db := NewDB(dir)

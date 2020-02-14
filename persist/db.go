@@ -132,12 +132,17 @@ func (db *DB) PersistAppliedRule(ID int, Name string, Hash string, Inputs *Bindi
 }
 
 func (db *DB) AddAppliedRuleToCurrent(ID int) {
+	// this is for promoting a past applied rule execution from the history to add it to the current session
+
 	appliedRule := db.appliedRuleHistoryByID[ID]
 	db.currentAppliedRules[appliedRule.ID] = appliedRule
 
 	// if this rule is complete, add all the artifacts to the current session as well
 	if appliedRule.Outputs != nil {
 		for _, output := range appliedRule.Outputs {
+			if _, exists := db.currentArtifacts[output.id]; exists {
+				panic(fmt.Sprintf("Cannot record completion of applied rule because artifact is already in session: %v", output.String()))
+			}
 			db.currentArtifacts[output.id] = output
 		}
 	}
@@ -158,6 +163,10 @@ func (db *DB) UpdateAppliedRuleComplete(ID int, Outputs []*Artifact) error {
 		}
 		db.currentArtifacts[output.id] = output
 	}
+	// if _, exists := db.currentAppliedRules[appliedRule.ID]; !exists {
+	// 	panic("Application should already exist")
+	// }
+	db.currentAppliedRules[appliedRule.ID] = &appliedRule
 
 	return nil
 }
@@ -253,7 +262,7 @@ func (db *DB) GetArtifactFromHistory(props *ArtifactProperties) *Artifact {
 func (db *DB) DeleteAppliedRule(ID int) error {
 	app := db.appliedRuleHistoryByID[ID]
 	appsToDelete := []*AppliedRule{app}
-	appsToDelete = append(appsToDelete, FindApplicationsDownstreamOfApplication(app)...)
+	appsToDelete = append(appsToDelete, db.FindApplicationsDownstreamOfApplication(app.ID)...)
 
 	for _, app = range appsToDelete {
 		for _, artifact := range app.Outputs {
@@ -265,24 +274,41 @@ func (db *DB) DeleteAppliedRule(ID int) error {
 	return nil
 }
 
-func FindRuleApplicationsWithInput(artifact *Artifact) []*AppliedRule {
-	panic("unimp")
+func (db *DB) FindRuleApplicationsWithInput(artifact *Artifact) []*AppliedRule {
+	appliedRules := make([]*AppliedRule, 0, 10)
+outerLoop:
+	for _, appliedRule := range db.currentAppliedRules {
+		for _, value := range appliedRule.Inputs.ByName {
+			for _, a := range value.GetArtifacts() {
+				if a.id == artifact.id {
+					appliedRules = append(appliedRules, appliedRule)
+					continue outerLoop
+				}
+			}
+		}
+	}
+	return appliedRules
 }
 
-func FindApplicationsDownstreamOfArtifact(artifact *Artifact) []*AppliedRule {
+func (db *DB) FindApplicationsDownstreamOfArtifact(artifact *Artifact) []*AppliedRule {
 	result := make([]*AppliedRule, 0)
 
-	applications := FindRuleApplicationsWithInput(artifact)
+	applications := db.FindRuleApplicationsWithInput(artifact)
 	for _, application := range applications {
-		result = append(result, FindApplicationsDownstreamOfApplication(application)...)
+		result = append(result, application)
+		result = append(result, db.FindApplicationsDownstreamOfApplication(application.ID)...)
 	}
 	return result
 }
 
-func FindApplicationsDownstreamOfApplication(appliedRule *AppliedRule) []*AppliedRule {
+func (db *DB) FindApplicationsDownstreamOfApplication(appliedRuleID int) []*AppliedRule {
+	appliedRule, exists := db.currentAppliedRules[appliedRuleID]
+	if !exists {
+		panic("Looked up missing appliedRuleID")
+	}
 	result := make([]*AppliedRule, 0)
 	for _, output := range appliedRule.Outputs {
-		result = append(result, FindApplicationsDownstreamOfArtifact(output)...)
+		result = append(result, db.FindApplicationsDownstreamOfArtifact(output)...)
 	}
 
 	return result

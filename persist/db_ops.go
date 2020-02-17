@@ -283,6 +283,8 @@ func (l *OpLogReader) Close() error {
 func (l *OpLogReader) ReadTransaction() ([]DBOp, error) {
 	ops := make([]DBOp, 0, 10)
 	for {
+		// log.Printf("Attempting read %v", l.readCount)
+		l.readCount += 1
 		record, err := l.reader.ReadBytes('\n')
 		if err != nil {
 			return nil, err
@@ -338,7 +340,8 @@ func unmarshalOp(input []byte) (DBOp, error) {
 }
 
 type OpLogWriter struct {
-	file *os.File
+	file          *os.File
+	disableWrites bool
 }
 
 func OpenLogWriter(filename string) (*OpLogWriter, error) {
@@ -350,12 +353,16 @@ func OpenLogWriter(filename string) (*OpLogWriter, error) {
 }
 
 type OpLogReader struct {
-	file   *os.File
-	reader *bufio.Reader
+	readCount int
+	file      *os.File
+	reader    *bufio.Reader
 }
 
 // all writes are not recoverable, so we panic instead of returning an error
 func (w *OpLogWriter) write(x DBOp) {
+	if w.disableWrites {
+		panic("writes disabled")
+	}
 	env := Envelope{Type: x.GetType(), Body: x}
 	buf, err := json.Marshal(&env)
 	if err != nil {

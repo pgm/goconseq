@@ -6,9 +6,10 @@ type Config struct {
 	Rules map[string]*Rule
 	Vars  map[string]string
 	//	Artifacts []model.PropPairs
-	Executors map[string]Executor
-	StateDir  string
-	Artifacts []map[string]string
+	Executors  map[string]Executor
+	StateDir   string
+	Artifacts  []map[string]string
+	ReplayOnly bool
 }
 
 func NewConfig() *Config {

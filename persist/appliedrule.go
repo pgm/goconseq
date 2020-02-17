@@ -1,6 +1,9 @@
 package persist
 
-import "sort"
+import (
+	"log"
+	"sort"
+)
 
 type AppliedRule struct {
 	ID          int
@@ -14,6 +17,11 @@ type AppliedRule struct {
 func (ar *AppliedRule) IsEquivilent(Name string, Hash string, Inputs *Bindings) bool {
 	if ar.Name != Name {
 		return false
+	}
+
+	if Name == "a" && ar.Name == "a" {
+		log.Printf("hash %v, \n%s\n%s", Hash == ar.Hash, Hash, ar.Hash)
+		log.Printf("Inputs %v", Inputs.Equals(ar.Inputs))
 	}
 
 	if !Inputs.Equals(ar.Inputs) {

@@ -69,8 +69,13 @@ func NewDB(stateDir string) *DB {
 	if err != nil {
 		panic(err)
 	}
+
 	db.writer = writer
 	return db
+}
+
+func (db *DB) DisableUpdates() {
+	db.writer.disableWrites = true
 }
 
 func (db *DB) loadFromJournal(filename string) {
@@ -107,9 +112,17 @@ func (db *DB) GetWorkDir(appliedRuleID int) string {
 		fmt.Sprintf("r%d", appliedRuleID))
 }
 
+func (db *DB) GetHackCount() int {
+	return len(db.currentAppliedRules)
+}
+
 // all _read_ operations do not return errors because they only use memory. All _write_ operations return an error
 func (db *DB) FindAppliedRule(Name string, Hash string, Inputs *Bindings) *AppliedRule {
+	log.Printf("FindAppliedRule %s among %d", Name, len(db.currentAppliedRules))
 	for _, appliedRule := range db.currentAppliedRules {
+		//		fmt.Printf("%v %v %v\n", Name == appliedRule.Name, Hash == appliedRule.Hash, Inputs.Equals(appliedRule.Inputs))
+		//		fmt.Printf("%s == %s -> %v, %s == %s -> %v, eqiv %v\n", Name, appliedRule.Name, Name == appliedRule.Name, Hash, appliedRule.Hash, Hash == appliedRule.Hash, Inputs.Equals(appliedRule.Inputs))
+
 		if appliedRule.IsEquivilent(Name, Hash, Inputs) {
 			return appliedRule
 		}
@@ -196,6 +209,14 @@ func (db *DB) FindArtifacts(Properties map[string]string) []*Artifact {
 	return results
 }
 
+func (db *DB) FindAllAppliedRules() []*AppliedRule {
+	result := make([]*AppliedRule, 0, len(db.currentAppliedRules))
+	for _, appliedRule := range db.currentAppliedRules {
+		result = append(result, appliedRule)
+	}
+	return result
+}
+
 func (db *DB) AddFileGlobalPath(localPath string, globalPath string, sha256 string) *File {
 	fileID := db.nextID
 	file := &File{FileID: fileID, LocalPath: localPath, GlobalPath: globalPath, SHA256: sha256}
@@ -231,6 +252,7 @@ func (db *DB) UpdateFile(fileID int, localPath string, globalPath string) *File 
 }
 
 func (db *DB) GetAppliedRuleFromHistory(name string, hash string, inputs *Bindings) *AppliedRule {
+	log.Printf("appliedRuleHistoryByID %s among %d", name, len(db.appliedRuleHistoryByID))
 	var found *AppliedRule
 	for _, appliedRule := range db.appliedRuleHistoryByID {
 		if appliedRule.IsEquivilent(name, hash, inputs) {

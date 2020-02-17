@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"log"
+	"sort"
 
 	"github.com/pgm/goconseq/graph"
 	"github.com/pgm/goconseq/persist"
@@ -45,16 +46,47 @@ func asDictSlice(v []interface{}) []interface{} {
 	return nv
 }
 
+type indirectkey struct {
+	originalIndex int
+	key           string
+}
+
+func dictToStr(a interface{}) string {
+	b, err := json.Marshal(a)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+func sortJsonList(l []interface{}) []interface{} {
+	indirectkeys := make([]indirectkey, len(l))
+	for i := range l {
+		indirectkeys[i] = indirectkey{i, dictToStr(l[i])}
+	}
+	sort.Slice(indirectkeys, func(i, j int) bool {
+		return (indirectkeys[i].key < indirectkeys[j].key)
+	})
+
+	sortedOutputs := make([]interface{}, len(l))
+	for i := range l {
+		log.Printf("orig %d, key %s", indirectkeys[i].originalIndex, indirectkeys[i].key)
+		sortedOutputs[i] = l[indirectkeys[i].originalIndex]
+	}
+	return sortedOutputs
+}
+
 func (r *Rule) Hash() string {
 	outputs := make([]interface{}, len(r.Outputs))
 	for i := range r.Outputs {
 		ro := r.Outputs[i]
-		outputs[i] = ro.AsDicts()
+		outputs[i] = sortJsonList(ro.AsDicts())
 	}
+
 	log.Printf("Warning: Rule.Hash() is incomplete")
 	flat := map[string]interface{}{"name": r.Name,
 		"query":   r.Query.AsDict(),
-		"outputs": outputs} //,
+		"outputs": sortJsonList(outputs)} //,
 	//		"required_resources": r.RequiredResources,
 	//		"run_statements":     asDictSlice(r.RunStatements)}
 
@@ -83,8 +115,8 @@ type RuleOutput struct {
 	Properties []RuleOutputProperty
 }
 
-func (ro *RuleOutput) AsDicts() []map[string]interface{} {
-	nv := make([]map[string]interface{}, len(ro.Properties))
+func (ro *RuleOutput) AsDicts() []interface{} {
+	nv := make([]interface{}, len(ro.Properties))
 	for i := range nv {
 		nv[i] = map[string]interface{}{"Name": ro.Properties[i].Name,
 			"FileID": ro.Properties[i].FileID,

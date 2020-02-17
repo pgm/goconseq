@@ -18,6 +18,17 @@ type Artifact struct {
 	Properties *ArtifactProperties
 }
 
+func (ap *ArtifactProperties) ToStrMap() map[string]string {
+	result := make(map[string]string)
+	for k, v := range ap.Strings {
+		result[k] = v
+	}
+	for k, v := range ap.Files {
+		result[k] = fmt.Sprintf("<file %d>", v)
+	}
+	return result
+}
+
 func (ap *ArtifactProperties) String() string {
 	m := make(map[string]interface{})
 	for k, v := range ap.Strings {

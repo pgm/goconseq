@@ -39,7 +39,7 @@ func (e *execListener) UpdateStatus(status string) {
 	e.c <- &Update{ruleApplicationID: e.ruleApplicationID, status: &status}
 }
 
-func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
+func rulesToGraph(rules map[string]*model.Rule) *graph.Graph {
 	gb := graph.NewGraphBuilder()
 	for _, rule := range rules {
 		gb.AddRule(rule.Name)
@@ -50,10 +50,7 @@ func rulesToExecutionPlan(rules map[string]*model.Rule) *graph.ExecutionPlan {
 			gb.AddRuleProduces(rule.Name, outputProps)
 		}
 	}
-	g := gb.Build()
-	// g.Print()
-	plan := graph.ConstructExecutionPlan(g)
-	return plan
+	return gb.Build()
 }
 
 type PendingRuleApplication struct {
@@ -67,7 +64,8 @@ type PendingRuleApplication struct {
 func GetPendingRuleApplications(db *persist.DB,
 	name string,
 	hash string,
-	query *persist.Query) []PendingRuleApplication {
+	query *persist.Query,
+	replayOnly bool) []PendingRuleApplication {
 
 	pending := make([]PendingRuleApplication, 0)
 
@@ -80,14 +78,17 @@ func GetPendingRuleApplications(db *persist.DB,
 	}
 
 	for _, inputs := range rows {
+		log.Printf("inputs=%v, currentAppliedRules=%d", inputs, db.GetHackCount())
 		if application := db.FindAppliedRule(name, hash, inputs); application != nil {
 			// this has already been run in the current session so ignore it
 			log.Printf("This rule application was already executed in the current session. Is this case possible?")
 		} else if application := db.GetAppliedRuleFromHistory(name, hash, inputs); application != nil {
 			// this has already been run in a past session,
+			// log.Printf("Found in existing session")
 			pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs, existing: application})
-		} else {
+		} else if !replayOnly {
 			// this has never run, add it to our list of things to run
+			//			log.Printf("never run and replayOnly = %v", replayOnly)
 			pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs})
 		}
 	}
@@ -264,20 +265,28 @@ func AddArtifactRule(c *model.Config, fileRepo model.FileRepository) {
 	c.AddRule(rule)
 }
 
-func run(context context.Context, config *model.Config, db *persist.DB) *RunStats {
-	var stats RunStats
-
-	localPathLookup := func(fileID int) string {
-		return db.GetFile(fileID).LocalPath
-	}
-
+func runAndGetGraph(context context.Context, config *model.Config, db *persist.DB) (*graph.Graph, *RunStats) {
 	// make a synthetic rule which emits all the artifacts in the config
 	if len(config.Artifacts) > 0 {
 		AddArtifactRule(config, db)
 	}
 
 	// load rules into memory
-	plan := rulesToExecutionPlan(config.Rules)
+	execGraph := rulesToGraph(config.Rules)
+
+	stats := innerRun(context, config, execGraph, db)
+
+	return execGraph, stats
+}
+
+func innerRun(context context.Context, config *model.Config, execGraph *graph.Graph, db *persist.DB) *RunStats {
+	var stats RunStats
+
+	localPathLookup := func(fileID int) string {
+		return db.GetFile(fileID).LocalPath
+	}
+
+	plan := graph.ConstructExecutionPlan(execGraph)
 	listenerUpdates := make(chan *Update, 100)
 
 	// blocking call which waits until a running execution completes
@@ -309,7 +318,7 @@ func run(context context.Context, config *model.Config, db *persist.DB) *RunStat
 			query := rule.Query
 			hash := rule.Hash()
 			log.Printf("rule %s hash: %s", name, hash)
-			pendings := GetPendingRuleApplications(db, name, hash, query)
+			pendings := GetPendingRuleApplications(db, name, hash, query, config.ReplayOnly)
 
 			for _, pending := range pendings {
 				if pending.existing == nil {
@@ -527,11 +536,31 @@ func parseFile(config *model.Config, filename string) error {
 	return nil
 }
 
+func ReplayAndExport(stateDir string, filename string) (graph *graph.Graph, artifacts []*persist.Artifact, applications []*persist.AppliedRule, err error) {
+	config := model.NewConfig()
+	// config.ReplayOnly = true
+	config.StateDir = stateDir
+
+	db := persist.NewDB(stateDir)
+	db.DisableUpdates()
+
+	err = parseFile(config, filename)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	graph, _ = runAndGetGraph(context.Background(), config, db)
+	artifacts = db.FindArtifacts(make(map[string]string))
+	applications = db.FindAllAppliedRules()
+	return nil, artifacts, applications, nil
+}
+
 func RunRulesInFile(stateDir string, filename string) (*RunStats, error) {
 	config := model.NewConfig()
 	config.StateDir = stateDir
 
 	db := persist.NewDB(stateDir)
+
 	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{JobDir: stateDir}
 
 	err := parseFile(config, filename)
@@ -539,6 +568,6 @@ func RunRulesInFile(stateDir string, filename string) (*RunStats, error) {
 		return nil, err
 	}
 
-	stats := run(context.Background(), config, db)
+	_, stats := runAndGetGraph(context.Background(), config, db)
 	return stats, nil
 }

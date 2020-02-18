@@ -20,6 +20,7 @@ deploy:
   provider: gcs
   key_file: upload-user.key
   bucket: published-releases
+  acl: public-read
   local_dir: dist
   upload_dir: conseq
   edge: true

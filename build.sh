@@ -1,6 +1,10 @@
 #PLATFORM=`uname -s | tr '[:upper:]' '[:lower:]'`-`uname -m`
-mkdir -p dist
-env GOOS=darwin GOARCH=amd64 go build package-import-path
-go build -o dist/conseq-$GOOS-$GOARCH main.go
-env GOOS=linux GOARCH=amd64 go build package-import-path
-go build -o dist/conseq-$GOOS-$GOARCH main.go
+set -ex
+export GOOS=darwin
+export GOARCH=amd64
+mkdir -p dist/$TRAVIS_BUILD_NUMBER/$GOOS-$GOARCH
+go build -o dist/$TRAVIS_BUILD_NUMBER/$GOOS-$GOARCH/conseq main.go
+export GOOS=linux
+export GOARCH=amd64
+mkdir -p dist/$TRAVIS_BUILD_NUMBER/$GOOS-$GOARCH
+go build -o dist/$TRAVIS_BUILD_NUMBER/$GOOS-$GOARCH/conseq main.go

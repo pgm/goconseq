@@ -15,7 +15,7 @@ script:
 - pwd
 - ls -l
 - go test -v ./...
-- bash $TRAVIS_BUILD_DIR/build.sh
+- bash build.sh
 deploy:
   provider: gcs
   key_file: upload-user.key

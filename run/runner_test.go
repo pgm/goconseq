@@ -153,7 +153,7 @@ func TestReplay(t *testing.T) {
 
 	checkWithPartialRules := func(rules string, expectedA int, expectedX int, expectedY int) {
 		// now, reopen db in replay-only mode
-		db, config = parseRules(stateDir, aAndXrules)
+		db, config = parseRules(stateDir, rules)
 		db.DisableUpdates()
 		config.ReplayOnly = true
 		run(context.Background(), config, db)
@@ -173,6 +173,10 @@ func TestReplay(t *testing.T) {
 	// Now, with all rules, we should see everything
 	checkWithPartialRules(allRules, 1, 2, 2)
 
+}
+func run(ctx context.Context, config *model.Config, db *persist.DB) *RunStats {
+	_, stats := runAndGetGraph(ctx, config, db)
+	return stats
 }
 
 func parseRules(stateDir string, rules string) (*persist.DB, *model.Config) {

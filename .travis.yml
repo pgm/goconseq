@@ -8,8 +8,7 @@ before_install:
   -o $GOPATH/bin/dep
 - chmod +x $GOPATH/bin/dep
 - "( cd grammar && ./generate-parser )"
-- openssl aes-256-cbc -K $encrypted_dfa6417bf089_key -iv $encrypted_dfa6417bf089_iv
-  -in upload-user.key.enc -out upload-user.key -d
+- "openssl aes-256-cbc -K ${encrypted_dfa6417bf089_key} -iv ${encrypted_dfa6417bf089_iv} -in upload-user.key.enc -out upload-user.key -d"
 install:
 - dep ensure
 deploy:

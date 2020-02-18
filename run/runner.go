@@ -552,7 +552,7 @@ func ReplayAndExport(stateDir string, filename string) (graph *graph.Graph, arti
 	graph, _ = runAndGetGraph(context.Background(), config, db)
 	artifacts = db.FindArtifacts(make(map[string]string))
 	applications = db.FindAllAppliedRules()
-	return nil, artifacts, applications, nil
+	return graph, artifacts, applications, nil
 }
 
 func RunRulesInFile(stateDir string, filename string) (*RunStats, error) {

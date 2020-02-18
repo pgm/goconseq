@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type rule struct {
+type Rule struct {
 	name     string
 	produces []*artifact
 	consumes []*artifactRel
@@ -23,17 +23,17 @@ func (ar *artifactRel) String() string {
 
 // GraphBuilder is a data structure which is incrementally constructed via Add.. methods and then Build() can be called
 type GraphBuilder struct {
-	ruleByName  map[string]*rule
+	ruleByName  map[string]*Rule
 	consumeRels map[string][]*artifactRel
 }
 
 func NewGraphBuilder() *GraphBuilder {
-	return &GraphBuilder{ruleByName: make(map[string]*rule),
+	return &GraphBuilder{ruleByName: make(map[string]*Rule),
 		consumeRels: make(map[string][]*artifactRel)}
 }
 
 type Graph struct {
-	roots []*rule
+	roots []*Rule
 	// rulesByName map[string]*rule
 }
 
@@ -85,10 +85,23 @@ type Graph struct {
 // 	return g.subgraphWithRules(ruleNames)
 // }
 
-func (g *Graph) ForEachRule(f func(r *rule)) {
-	seen := make(map[*rule]bool)
-	var traverse func(r *rule)
-	traverse = func(r *rule) {
+func (g *Graph) ForEachArtifact(f func(a *artifact)) {
+	seen := make(map[*artifact]bool)
+	g.ForEachRule(func(r *Rule) {
+		for _, a := range r.produces {
+			if seen[a] {
+				continue
+			}
+			seen[a] = true
+			f(a)
+		}
+	})
+}
+
+func (g *Graph) ForEachRule(f func(r *Rule)) {
+	seen := make(map[*Rule]bool)
+	var traverse func(r *Rule)
+	traverse = func(r *Rule) {
 		seen[r] = true
 		f(r)
 		for _, a := range r.produces {
@@ -151,7 +164,7 @@ func (a *artifactIndex) Find(queryProps *PropertiesTemplate) []*artifact {
 }
 
 func (g *GraphBuilder) Build() *Graph {
-	roots := make([]*rule, 0, 10)
+	roots := make([]*Rule, 0, 10)
 
 	// construct index of all produced artifacts
 	index := newArtifactIndex()
@@ -211,8 +224,8 @@ func (g *GraphBuilder) AddRuleConsumes(name string, isAll bool, props *Propertie
 		isAll:    isAll,
 		artifact: &artifact{props: props}})
 }
-func newRule(name string) *rule {
-	return &rule{name: name,
+func newRule(name string) *Rule {
+	return &Rule{name: name,
 		produces: make([]*artifact, 0, 1),
 		consumes: make([]*artifactRel, 0, 1)}
 }
@@ -222,6 +235,6 @@ func (g *GraphBuilder) AddRuleProduces(name string, props *PropertiesTemplate) {
 	r := g.ruleByName[name]
 	r.produces = append(r.produces, &artifact{
 		props:      props,
-		consumedBy: make([]*rule, 0, 1),
-		producedBy: make([]*rule, 0, 1)})
+		consumedBy: make([]*Rule, 0, 1),
+		producedBy: make([]*Rule, 0, 1)})
 }

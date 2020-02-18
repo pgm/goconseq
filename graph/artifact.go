@@ -15,8 +15,8 @@ type PropertiesTemplate struct {
 
 type artifact struct {
 	props      *PropertiesTemplate
-	consumedBy []*rule
-	producedBy []*rule
+	consumedBy []*Rule
+	producedBy []*Rule
 }
 
 func (pt *PropertiesTemplate) String() string {

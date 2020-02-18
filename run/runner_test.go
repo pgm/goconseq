@@ -119,6 +119,60 @@ func TestSimpleSingleRuleRun(t *testing.T) {
 	run(context.Background(), config, db)
 	artifacts := db.FindArtifacts(map[string]string{})
 	assert.Equal(t, 1, len(artifacts))
+	db.Close()
+}
+
+func TestReplay(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
+
+	aAndXrules := `
+	rule a:
+		outputs: {'type': 'a-out'}
+		run 'date'
+
+	rule x:
+		inputs: a={'type': 'a-out'}
+		outputs: {'type': 'x-out', 'value': '1'}, {'type': 'x-out', 'value': '2'}
+		run 'date'
+
+	`
+	yRule := `
+	rule y:
+		inputs: x={'type': 'x-out'}
+		outputs: {'type': 'y-out', 'parent':'{{ inputs.x.value }}'}
+		run 'date'
+	`
+	allRules := aAndXrules + yRule
+
+	db, config := parseRules(stateDir, allRules)
+	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{JobDir: stateDir}
+	run(context.Background(), config, db)
+	db.Close()
+
+	checkWithPartialRules := func(rules string, expectedA int, expectedX int, expectedY int) {
+		// now, reopen db in replay-only mode
+		db, config = parseRules(stateDir, aAndXrules)
+		db.DisableUpdates()
+		config.ReplayOnly = true
+		run(context.Background(), config, db)
+		// verify we can see only a and x artifacts
+		aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+		xOut := db.FindArtifacts(map[string]string{"type": "x-out"})
+		yOut := db.FindArtifacts(map[string]string{"type": "y-out"})
+		assert.Equal(t, expectedA, len(aOut))
+		assert.Equal(t, expectedX, len(xOut))
+		assert.Equal(t, expectedY, len(yOut))
+		db.Close()
+	}
+
+	checkWithPartialRules(aAndXrules, 1, 2, 0)
+	// this time, only y and we shouldn't see anything because we're missing root
+	checkWithPartialRules(yRule, 0, 0, 0)
+	// Now, with all rules, we should see everything
+	checkWithPartialRules(allRules, 1, 2, 2)
+
 }
 
 func parseRules(stateDir string, rules string) (*persist.DB, *model.Config) {

@@ -70,7 +70,6 @@ func sortJsonList(l []interface{}) []interface{} {
 
 	sortedOutputs := make([]interface{}, len(l))
 	for i := range l {
-		log.Printf("orig %d, key %s", indirectkeys[i].originalIndex, indirectkeys[i].key)
 		sortedOutputs[i] = l[indirectkeys[i].originalIndex]
 	}
 	return sortedOutputs

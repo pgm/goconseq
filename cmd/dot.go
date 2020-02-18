@@ -1,7 +1,10 @@
 package cmd
 
 import (
-	"fmt"
+	"log"
+	"os"
+
+	"github.com/pgm/goconseq/run"
 
 	"github.com/spf13/cobra"
 )
@@ -11,12 +14,14 @@ var (
 		Use:   "dot",
 		Short: "export dot graph",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("dot called")
-			// graph, artifacts, applications, err := run.ReplayAndExport(stateDir, args[0])
-			// if err != nil {
-			// 	log.Fatalf("%s", err)
-			// }
-			panic("unfinished")
+			graph, _, _, err := run.ReplayAndExport(stateDir, args[0])
+			if err != nil {
+				log.Fatalf("%s", err)
+			}
+			if graph == nil {
+				panic("nil graph")
+			}
+			graph.PrintGraph(os.Stdout)
 		},
 	}
 )

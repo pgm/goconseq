@@ -163,7 +163,7 @@ func (e *ExecutionPlan) GetNext() []string {
 func ConstructExecutionPlan(g *Graph) *ExecutionPlan {
 	// TODO: Doesn't support "forall". Revisit considering using "group by" instead of all
 	plan := NewExecutionPlan()
-	g.ForEachRule(func(r *rule) {
+	g.ForEachRule(func(r *Rule) {
 		// precursor string, successor string, waitForAll bool
 		if len(r.consumes) == 0 {
 			plan.AddDependency(InitialState, r.name, false)

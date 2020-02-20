@@ -8,8 +8,8 @@ import (
 
 func TestSimpleExecution(t *testing.T) {
 	e := NewExecutionPlan()
-	e.AddDependency(InitialState, "a", false)
-	e.AddDependency("a", "b", false)
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "b")
 
 	// simulate
 	e.Completed(InitialState)
@@ -36,8 +36,8 @@ func TestSimpleExecution(t *testing.T) {
 func TestExecutionWithMultipleChildren(t *testing.T) {
 	// identical to TestSimpleExecution, but running a results in two executions of a and therefore two of b
 	e := NewExecutionPlan()
-	e.AddDependency(InitialState, "a", false)
-	e.AddDependency("a", "b", false)
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "b")
 
 	// simulate
 	e.Completed(InitialState)
@@ -78,8 +78,8 @@ func TestExecutionWithMultipleChildren(t *testing.T) {
 func TestBrokenChain(t *testing.T) {
 	// identical to TestSimpleExecution, but attempt to run A fails, so no attempt to run B
 	e := NewExecutionPlan()
-	e.AddDependency(InitialState, "a", false)
-	e.AddDependency("a", "b", false)
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "b")
 
 	// simulate
 	e.Completed(InitialState)
@@ -91,95 +91,121 @@ func TestBrokenChain(t *testing.T) {
 	assert.True(t, e.Done())
 }
 
-// func TestWaitForAll(t *testing.T) {
-// 	// identical to TestExecutionWithMultipleChildren, b waits for all A to complete
-// 	e := NewExecutionPlan()
-// 	e.AddDependency(InitialState, "a", false)
-// 	e.AddDependency("a", "b", true)
+func TestWaitForAll(t *testing.T) {
+	// identical to TestExecutionWithMultipleChildren, b waits for all A to complete
+	e := NewExecutionPlan()
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "b")
+	e.AddDependency(InitialState, "b")
 
-// 	// simulate
-// 	e.Completed(InitialState)
-// 	next := e.GetPrioritizedNext()
-// 	assert.Equal(t, []string{"a"}, next)
-// 	e.Started("a")
-// 	e.Started("a")
-// 	next = e.GetNext()
-// 	assert.Equal(t, []string{}, next)
+	e.AddBlockedBy("a", "b")
 
-// 	e.Completed("a")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, next, []string{})
-// 	next = e.GetNext()
-// 	assert.Equal(t, next, []string{})
+	// simulate
+	e.Completed(InitialState)
+	next := e.GetPrioritizedNext()
+	assert.Equal(t, []string{"a"}, next)
+	e.Started("a")
+	e.Started("a")
+	next = e.GetNext()
+	assert.Equal(t, []string{}, next)
 
-// 	e.Completed("a")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, next, []string{"b"})
-// 	e.Started("b")
-// 	next = e.GetNext()
-// 	assert.Equal(t, next, []string{})
+	e.Completed("a")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, next, []string{})
+	next = e.GetNext()
+	assert.Equal(t, next, []string{})
 
-// 	e.Completed("b")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, []string{}, next)
-// 	next = e.GetNext()
-// 	assert.Equal(t, []string{}, next)
+	e.Completed("a")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, next, []string{"b"})
+	e.Started("b")
+	next = e.GetNext()
+	assert.Equal(t, next, []string{})
 
-// 	assert.True(t, e.Done())
-// }
+	e.Completed("b")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, []string{}, next)
+	next = e.GetNext()
+	assert.Equal(t, []string{}, next)
 
-// // this test fails because b would need to be added to the pending list after InitialState
-// func TestWaitForAllButNoneStarted(t *testing.T) {
-// 	// identical to TestExecutionWithMultipleChildren, b waits for all A to complete
-// 	e := NewExecutionPlan()
-// 	e.AddDependency(InitialState, "a", false)
-// 	e.AddDependency("a", "b", true)
+	assert.True(t, e.Done())
+}
 
-// 	// simulate
-// 	e.Completed(InitialState)
-// 	next := e.GetPrioritizedNext()
-// 	assert.Equal(t, []string{"a"}, next)
-// 	// attempt to start "a" but it's not startable, so continue and "b" should fire
-// 	next = e.GetNext()
-// 	assert.Equal(t, []string{"b"}, next)
-// 	e.Started("b")
-// 	e.Completed("b")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, next, []string{})
-// 	next = e.GetNext()
-// 	assert.Equal(t, next, []string{})
-// 	assert.True(t, e.Done())
-// }
+// this test fails because b would need to be added to the pending list after InitialState
+func TestWaitForAllButNoneStarted(t *testing.T) {
+	// identical to TestExecutionWithMultipleChildren, b waits for all A to complete
+	e := NewExecutionPlan()
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "b")
+	e.AddDependency(InitialState, "b")
+	e.AddBlockedBy("a", "b")
+	e.AddBlockedBy(InitialState, "b")
 
-// func TestJoinWithAll(t *testing.T) {
-// 	e := NewExecutionPlan()
-// 	e.AddDependency(InitialState, "a", false)
-// 	e.AddDependency("a", "b", true)
-// 	e.AddDependency("a", "c", false)
-// 	e.AddDependency("b", "c", true)
+	// peek inside and verify that AddBlockedBy updated InitialState's successor list
+	assert.Equal(t, "{a b}", e.afterEach[InitialState].String())
+	assert.Equal(t, "{"+InitialState+" a}", e.blockedBy["b"].String())
 
-// 	// simulate
-// 	e.Completed(InitialState)
-// 	next := e.GetPrioritizedNext()
-// 	assert.Equal(t, []string{"a"}, next)
-// 	e.Started("a")
-// 	next = e.GetNext()
-// 	assert.Equal(t, []string{}, next)
+	// simulate
+	e.Completed(InitialState)
+	// peek inside the internals at the pending list
+	assert.Equal(t, "{a b}", e.pendingRules.String())
+	next := e.GetPrioritizedNext()
+	assert.Equal(t, []string{"a"}, next)
+	// now "b" should be pending because it should have been added as a dependency of initialState when AddBlockedBy was called
+	assert.Equal(t, "{b}", e.pendingRules.String())
+	// attempt to start "a" but it's not startable, so continue and "b" should fire
+	next = e.GetNext()
+	assert.Equal(t, []string{"b"}, next)
+	e.Started("b")
+	e.Completed("b")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, next, []string{})
+	next = e.GetNext()
+	assert.Equal(t, next, []string{})
+	assert.True(t, e.Done())
+}
 
-// 	e.Completed("a")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, next, []string{"b"})
-// 	e.Started("b")
-// 	next = e.GetNext()
-// 	assert.Equal(t, next, []string{})
+func TestJoinWithAll(t *testing.T) {
+	e := NewExecutionPlan()
+	// initial -> a
+	// a -> c
+	// all a -> b
+	// all b -> c
+	e.AddDependency(InitialState, "a")
+	e.AddDependency("a", "c")
+	// implied deps
+	e.AddDependency(InitialState, "b")
+	e.AddDependency(InitialState, "c")
+	e.AddDependency("a", "b")
+	e.AddDependency("a", "c")
+	e.AddBlockedBy("a", "b")
+	e.AddBlockedBy(InitialState, "b")
+	e.AddBlockedBy("b", "c")
+	e.AddBlockedBy("a", "c")
+	e.AddBlockedBy(InitialState, "c")
 
-// 	e.Completed("b")
-// 	next = e.GetPrioritizedNext()
-// 	assert.Equal(t, []string{"c"}, next)
-// 	next = e.GetNext()
-// 	assert.Equal(t, []string{}, next)
-// 	e.Started("c")
-// 	e.Completed("c")
+	// simulate
+	e.Completed(InitialState)
+	next := e.GetPrioritizedNext()
+	assert.Equal(t, []string{"a"}, next)
+	e.Started("a")
+	next = e.GetNext()
+	assert.Equal(t, []string{}, next)
 
-// 	assert.True(t, e.Done())
-// }
+	e.Completed("a")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, next, []string{"b"})
+	e.Started("b")
+	next = e.GetNext()
+	assert.Equal(t, next, []string{})
+
+	e.Completed("b")
+	next = e.GetPrioritizedNext()
+	assert.Equal(t, []string{"c"}, next)
+	next = e.GetNext()
+	assert.Equal(t, []string{}, next)
+	e.Started("c")
+	e.Completed("c")
+
+	assert.True(t, e.Done())
+}

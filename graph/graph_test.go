@@ -68,3 +68,38 @@ func TestGraphWithNoOutput(t *testing.T) {
 	assert.Equal(t, len(r1.consumes), 0)
 	assert.Equal(t, len(r1.produces), 0)
 }
+
+func TestGraphWithAllRef(t *testing.T) {
+	gb := NewGraphBuilder()
+	gb.AddRule("a")
+	gb.AddRule("b")
+
+	gb.AddRuleProduces("a", parseProps("p:a"))
+	gb.AddRuleConsumes("b", true, parseProps("p:a"))
+
+	g := gb.Build()
+	ex := ConstructExecutionPlan(g)
+	assert.Equal(t, "{b}", ex.afterEach["a"].String())
+	assert.Equal(t, "{a b}", ex.afterEach[InitialState].String())
+	assert.Equal(t, 1, len(ex.blockedBy))
+	assert.Equal(t, "{"+InitialState+" a}", ex.blockedBy["b"].String())
+}
+
+func TestGraphWithDeepAllRef(t *testing.T) {
+	gb := NewGraphBuilder()
+	gb.AddRule("a")
+	gb.AddRule("b")
+	gb.AddRule("c")
+
+	gb.AddRuleProduces("a", parseProps("p:a"))
+	gb.AddRuleConsumes("b", false, parseProps("p:a"))
+	gb.AddRuleProduces("b", parseProps("p:b"))
+	gb.AddRuleConsumes("c", true, parseProps("p:b"))
+
+	g := gb.Build()
+	ex := ConstructExecutionPlan(g)
+	assert.Equal(t, "{b c}", ex.afterEach["a"].String())
+	assert.Equal(t, "{a c}", ex.afterEach[InitialState].String())
+	assert.Equal(t, 1, len(ex.blockedBy))
+	assert.Equal(t, "{"+InitialState+" a b}", ex.blockedBy["c"].String())
+}

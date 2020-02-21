@@ -17,7 +17,7 @@ input_bindings: 'inputs' ':' binding (',' binding)*;
 
 filename_ref: 'filename' '(' quoted_string ')';
 
-binding: IDENTIFIER '=' ( json_obj | filename_ref);
+binding: IDENTIFIER '=' ALL? ( json_obj | filename_ref);
 
 output: 'outputs' ':' json_obj (',' json_obj)*;
 
@@ -39,6 +39,7 @@ json_value: quoted_string; //| json_obj | json_array;
 ////// lexer
 
 LET: 'let';
+ALL: 'all';
 
 EQUALS: '=';
 

@@ -258,6 +258,38 @@ func TestConflictingOutputs(t *testing.T) {
 	assert.Equal(t, 0, stats.ExistingAppliedRules)
 }
 
+func TestRuleWithAllQuery(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	assert.Nil(t, err)
+	defer os.RemoveAll(stateDir)
+
+	initialTwoRules := `
+	rule a1:
+		outputs: {'type': 'a-out', 'value': '1'}
+
+	rule a2:
+		outputs: {'type': 'a-out', 'value': '2'}
+
+	rule b:
+		inputs: a= all {'type': 'a-out'}
+		outputs: {'type': 'b-out'}
+	`
+
+	db, config := parseRules(stateDir, initialTwoRules)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+	assert.Equal(t, 3, stats.Executions)
+	assert.Equal(t, 3, stats.SuccessfulCompletions)
+	assert.Equal(t, 0, stats.FailedCompletions)
+	assert.Equal(t, 0, stats.ExistingAppliedRules)
+
+	aOut := db.FindArtifacts(map[string]string{"type": "a-out"})
+	assert.Equal(t, 2, len(aOut))
+	bOut := db.FindArtifacts(map[string]string{"type": "b-out"})
+	assert.Equal(t, 1, len(bOut))
+}
+
 func TestRunTwice(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", t.Name())
 	if err != nil {

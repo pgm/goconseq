@@ -23,6 +23,10 @@ func (l *Listener) PopString() string {
 	return l.Pop().(string)
 }
 
+func (l *Listener) PopQuery() *model.InputQuery {
+	return l.Pop().(*model.InputQuery)
+}
+
 func (l *Listener) PopStrMap() map[string]string {
 	return l.Pop().(map[string]string)
 }
@@ -131,6 +135,7 @@ func mapFileRefArtifact(filename string) (map[string]string, map[string]string) 
 func (l *Listener) ExitBinding(ctx *antlrparser.BindingContext) {
 	var value map[string]string
 
+	isAll := ctx.ALL() != nil
 	name := ctx.IDENTIFIER().GetText()
 	if ctx.Json_obj() != nil {
 		value = l.PopStrMap()
@@ -148,13 +153,13 @@ func (l *Listener) ExitBinding(ctx *antlrparser.BindingContext) {
 	}
 
 	l.Push(name)
-	l.Push(value)
+	l.Push(&model.InputQuery{IsAll: isAll, Properties: value})
 }
 
 func (l *Listener) ExitInput_bindings(ctx *antlrparser.Input_bindingsContext) {
-	bindings := make(map[string]map[string]string)
+	bindings := make(map[string]*model.InputQuery)
 	for _ = range ctx.AllBinding() {
-		query := l.PopStrMap()
+		query := l.PopQuery()
 		variable := l.PopString()
 		bindings[variable] = query
 	}

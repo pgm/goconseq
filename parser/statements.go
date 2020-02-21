@@ -13,7 +13,7 @@ type Statement interface {
 
 type RuleStatement struct {
 	Name              string
-	Inputs            map[string]map[string]string
+	Inputs            map[string]*model.InputQuery
 	Outputs           []model.RuleOutput
 	ExecutorName      string
 	RequiredResources map[string]float64

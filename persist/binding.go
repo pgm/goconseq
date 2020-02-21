@@ -79,7 +79,7 @@ func (b *Bindings) Transform(transform func(artifact *Artifact) *Artifact) *Bind
 	nb := NewBindings()
 	for name, value := range b.ByName {
 		s, ok := value.(*SingleArtifact)
-		if !ok {
+		if ok {
 			nb.AddArtifact(name, transform(s.artifacts[0]))
 		} else {
 			sArtifacts := value.GetArtifacts()

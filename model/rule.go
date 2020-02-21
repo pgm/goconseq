@@ -6,8 +6,12 @@ import (
 	"sort"
 
 	"github.com/pgm/goconseq/graph"
-	"github.com/pgm/goconseq/persist"
 )
+
+type InputQuery struct {
+	IsAll      bool
+	Properties map[string]string
+}
 
 type RunWithStatement struct {
 	Script     string
@@ -24,9 +28,16 @@ type QueryTemplate struct {
 	Properties []*TemplateProperty
 }
 
+type QueryI interface {
+	AsDict() map[string]interface{}
+	GetProps() []*graph.PropertiesTemplate
+	IsEmpty() bool
+	ExecuteQuery(db interface{}) []interface{}
+}
+
 type Rule struct {
 	Name              string
-	Query             *persist.Query
+	Query             QueryI
 	ExpectedOutputs   []*QueryTemplate
 	Outputs           []RuleOutput
 	ExecutorName      string
@@ -84,10 +95,12 @@ func (r *Rule) Hash() string {
 
 	log.Printf("Warning: Rule.Hash() is incomplete")
 	flat := map[string]interface{}{"name": r.Name,
-		"query":   r.Query.AsDict(),
 		"outputs": sortJsonList(outputs)} //,
 	//		"required_resources": r.RequiredResources,
 	//		"run_statements":     asDictSlice(r.RunStatements)}
+	if r.Query != nil {
+		flat["query"] = r.Query.AsDict()
+	}
 
 	b, err := json.Marshal(flat)
 	if err != nil {

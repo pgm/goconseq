@@ -64,7 +64,7 @@ type PendingRuleApplication struct {
 func GetPendingRuleApplications(db *persist.DB,
 	name string,
 	hash string,
-	query *persist.Query,
+	query model.QueryI,
 	replayOnly bool) []PendingRuleApplication {
 
 	pending := make([]PendingRuleApplication, 0)
@@ -74,7 +74,11 @@ func GetPendingRuleApplications(db *persist.DB,
 	if query == nil || query.IsEmpty() {
 		rows = []*persist.Bindings{persist.EmptyBinding}
 	} else {
-		rows = persist.ExecuteQuery(db, query)
+		r1 := query.ExecuteQuery(db)
+		rows = make([]*persist.Bindings, len(r1))
+		for i, r1v := range r1 {
+			rows[i] = r1v.(*persist.Bindings)
+		}
 	}
 
 	for _, inputs := range rows {
@@ -117,8 +121,13 @@ func expandTemplate(s string, inputs *persist.Bindings) string {
 	template := pongo2.Must(pongo2.FromString(s))
 	inputsContext := map[string]interface{}{}
 	for name, value := range inputs.ByName {
-		strings := value.GetArtifacts()[0].Properties.Strings
-		inputsContext[name] = strings
+		_, ok := value.(*persist.SingleArtifact)
+		if ok {
+			strings := value.GetArtifacts()[0].Properties.Strings
+			inputsContext[name] = strings
+		} else {
+			log.Printf("TODO: expandTemplate does not handle multiple artifact variables")
+		}
 	}
 	result, err := template.Execute(map[string]interface{}{"inputs": inputsContext})
 	if err != nil {

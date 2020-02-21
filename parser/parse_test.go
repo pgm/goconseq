@@ -45,7 +45,7 @@ func TestParseRule(t *testing.T) {
 		}
 	}
 	assert.Equal(t, "out", outputType)
-	assert.Equal(t, "banana", stmt.Inputs["a"]["type"])
+	assert.Equal(t, "banana", stmt.Inputs["a"].Properties["type"])
 }
 
 func TestParseFailure(t *testing.T) {
@@ -62,6 +62,6 @@ func TestParseRuleWithFileRef(t *testing.T) {
 	assert.Equal(t, 2, len(stmts.Statements))
 	stmt := stmts.Statements[0].(*RuleStatement)
 	assert.Equal(t, "x", stmt.Name)
-	assert.Equal(t, "$filename_ref", stmt.Inputs["a"]["type"])
-	assert.Equal(t, "sample", stmt.Inputs["a"]["filename"])
+	assert.Equal(t, "$filename_ref", stmt.Inputs["a"].Properties["type"])
+	assert.Equal(t, "sample", stmt.Inputs["a"].Properties["filename"])
 }

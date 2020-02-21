@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/pgm/goconseq/graph"
+	"github.com/pgm/goconseq/model"
 )
 
 type StringPair struct {
@@ -95,7 +96,21 @@ func copyStrMap(a map[string]string) map[string]string {
 	return b
 }
 
-func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*QueryBinding) []*Bindings {
+func _executeQuery(db *DB,
+	origPlaceholders map[string]string,
+	forEachList []*QueryBinding,
+	forAllList []*QueryBinding) []*Bindings {
+
+	if len(forEachList) == 0 {
+		binding := NewBindings()
+		for _, forAll := range forAllList {
+			constraints := mergeConstraints(forAll.constantConstraints, forAll.placeholderConstraints, origPlaceholders)
+			artifacts := db.FindArtifacts(constraints)
+			binding.AddArtifacts(forAll.bindingVariable, artifacts)
+		}
+		return []*Bindings{binding}
+	}
+
 	forEach := forEachList[0]
 	restForEach := forEachList[1:]
 
@@ -105,16 +120,17 @@ func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*Qu
 		return nil
 	}
 
-	if len(restForEach) == 0 {
-		// base case: return the bindings
-		records := make([]*Bindings, len(artifacts))
-		for i := range artifacts {
-			binding := &Bindings{ByName: make(map[string]BindingValue)}
-			binding.AddArtifact(forEach.bindingVariable, artifacts[i])
-			records[i] = binding
-		}
-		return records
-	}
+	// if len(restForEach) == 0 {
+	// 	// base case: return the bindings
+	// 	records := make([]*Bindings, len(artifacts))
+	// 	for i := range artifacts {
+	// 		binding := &Bindings{ByName: make(map[string]BindingValue)}
+	// 		binding.AddArtifact(forEach.bindingVariable, artifacts[i])
+	// 		addForAllBindings(binding, constraints)
+	// 		records[i] = binding
+	// 	}
+	// 	return records
+	// }
 
 	// recursive case: execute _executeQuery on the remainder of forEaches
 	combinedRecords := make([]*Bindings, 0, len(artifacts))
@@ -124,7 +140,7 @@ func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*Qu
 		for _, assignment := range forEach.placeholderAssignments {
 			placeholders[assignment.second] = artifact.Properties.Strings[assignment.first]
 		}
-		records := _executeQuery(db, placeholders, restForEach)
+		records := _executeQuery(db, placeholders, restForEach, forAllList)
 		for _, record := range records {
 			binding := &Bindings{ByName: make(map[string]BindingValue)}
 			binding.AddArtifact(forEach.bindingVariable, artifact)
@@ -140,21 +156,24 @@ func _executeQuery(db *DB, origPlaceholders map[string]string, forEachList []*Qu
 func ExecuteQuery(db *DB, query *Query) []*Bindings {
 	// resolve all forEaches before doing any forAlls
 	placeholders := make(map[string]string)
-	if len(query.forAll) != 0 {
-		panic("forall not implemented")
-	}
-	if len(query.forEach) == 0 {
-		panic("need at least one foreach")
-	}
-	return _executeQuery(db, placeholders, query.forEach)
+	return _executeQuery(db, placeholders, query.forEach, query.forAll)
 }
 
-func QueryFromMaps(bindMap map[string]map[string]string) *Query {
+func (query *Query) ExecuteQuery(db interface{}) []interface{} {
+	r1 := ExecuteQuery(db.(*DB), query)
+	r2 := make([]interface{}, len(r1))
+	for i, r1v := range r1 {
+		r2[i] = r1v
+	}
+	return r2
+}
+
+func QueryFromMaps(bindMap map[string]*model.InputQuery) *Query {
 	var query Query
 
-	for name, template := range bindMap {
+	for name, inputQuery := range bindMap {
 		binding := &QueryBinding{bindingVariable: name,
-			constantConstraints: template}
+			constantConstraints: inputQuery.Properties}
 		// bindingVariable string
 		// // the static constraints to use when querying
 		// constantConstraints map[string]string
@@ -164,7 +183,11 @@ func QueryFromMaps(bindMap map[string]map[string]string) *Query {
 
 		// for k, v := template {
 		// }
-		query.forEach = append(query.forEach, binding)
+		if inputQuery.IsAll {
+			query.forAll = append(query.forAll, binding)
+		} else {
+			query.forEach = append(query.forEach, binding)
+		}
 	}
 
 	return &query

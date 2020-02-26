@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -75,6 +76,8 @@ func GetPendingRuleApplications(db *persist.DB,
 		rows = []*persist.Bindings{persist.EmptyBinding}
 	} else {
 		r1 := query.ExecuteQuery(db)
+		log.Printf("Executing query for %s: %v returned %d rows", name, query.AsDict(), len(r1))
+		db.DumpArtifacts()
 		rows = make([]*persist.Bindings, len(r1))
 		for i, r1v := range r1 {
 			rows[i] = r1v.(*persist.Bindings)
@@ -144,21 +147,20 @@ func transformMapValues(orig map[string]string, transform func(string) string) m
 	return m
 }
 
-func transformRuleOutput(orig *model.RuleOutput, fileLookup func(int) string, transform func(string) string) map[string]string {
-	m := make(map[string]string)
+func transformRuleOutput(orig *model.RuleOutput, fileLookup func(int) string, transform func(string) string) map[string]interface{} {
+	m := make(map[string]interface{})
 	for _, prop := range orig.Properties {
-		if prop.HasValue() {
-			m[prop.Name] = transform(prop.Value)
+		if prop.IsFilename {
+			fn := transform(prop.Value)
+			m[prop.Name] = map[string]string{"$filename": fn}
 		} else {
-			path := fileLookup(prop.FileID)
-			log.Printf("fileLookup(%d)=%s", prop.FileID, path)
-			m[prop.Name] = path
+			m[prop.Name] = transform(prop.Value)
 		}
 	}
 	return m
 }
 
-func renderOutputsAsText(builder model.ExecutionBuilder, outputs []map[string]string) string {
+func renderOutputsAsText(builder model.ExecutionBuilder, outputs []map[string]interface{}) string {
 	results := make(map[string]interface{})
 	results["outputs"] = outputs
 	j, err := json.Marshal(results)
@@ -190,7 +192,7 @@ func expandRunStatements(runWith []*model.RunWithStatement, inputs *persist.Bind
 		result[i] = &model.RunWithStatement{Executable: expandTemplate(r.Executable, inputs), Script: expandTemplate(r.Script, inputs)}
 	}
 	if outputs != nil {
-		expandedOutputs := make([]map[string]string, len(outputs))
+		expandedOutputs := make([]map[string]interface{}, len(outputs))
 		for i, output := range outputs {
 			expandedOutputs[i] = transformRuleOutput(&output,
 				localPathLookup,
@@ -239,28 +241,27 @@ func computeSha256(filename string) (string, error) {
 
 func AddArtifactRule(c *model.Config, fileRepo model.FileRepository) {
 	outputs := make([]model.RuleOutput, 0, len(c.Artifacts))
+	log.Printf("Warning: need to change AddArtifactRule to create one rule per artifact")
 
 	for _, artifact := range c.Artifacts {
 		output := model.RuleOutput{Properties: make([]model.RuleOutputProperty, 0, len(artifact))}
 
-		if typeValue, ok := artifact["type"]; ok && typeValue == model.FileRefType {
-			// special case: is this artifact a file reference? If so, translate the filename into a FileID
-			filename := artifact["filename"]
-			sha256, err := computeSha256(filename)
-			if err != nil {
-				log.Panicf("Could not read %s: %s", filename, err)
-			}
+		for key, value := range artifact {
+			if value.IsFilename {
+				filename := value.Value
+				sha256, err := computeSha256(filename)
+				if err != nil {
+					log.Panicf("Could not read %s: %s", filename, err)
+				}
 
-			fileID := fileRepo.AddFileOrFind(filename, sha256)
+				// fileID := fileRepo.AddFileOrFind(filename, sha256)
 
-			output.AddPropertyString("type", model.FileRefType)
-			output.AddPropertyString("sha256", sha256)
-			output.AddPropertyString("filename", filename)
-			output.AddPropertyFileID("fileID", fileID)
-		} else {
-			// otherwise, copy this to an output artifact
-			for key, value := range artifact {
-				output.AddPropertyString(key, value)
+				// // output.AddPropertyString("type", model.FileRefType)
+				output.AddPropertyString(key+"$sha256", sha256)
+				// // output.AddPropertyString("filename", filename)
+				output.AddPropertyFilename(key, value.Value)
+			} else {
+				output.AddPropertyString(key, value.Value)
 			}
 		}
 
@@ -398,8 +399,15 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 			// attempt to parse the results
 			var err error
 			outputs, err = readResultOutputs(db.GetWorkDir(ruleApplicationID), func(filename string) (int, error) {
-				panic("unimp")
+				sha256, err := computeSha256(filename)
+				if err != nil {
+					return 0, fmt.Errorf("Could not read %s: %s", filename, err)
+				}
+
+				fileID := db.AddFileOrFind(filename, sha256)
+				return fileID, nil
 			})
+
 			if err != nil {
 				success = false
 				failureMessage = err.Error()
@@ -412,6 +420,7 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 
 			// write all of the artifacts to the DB
 			outputArtifacts := make([]*persist.Artifact, len(outputs))
+			log.Printf("Completed %s", running[ruleApplicationID])
 			for i, props := range outputs {
 				log.Printf("output artifact %d: %s", i, props.String())
 				artifact := db.GetArtifactFromHistory(props)
@@ -487,7 +496,19 @@ func readResultOutputs(workDir string, getFileID func(filename string) (int, err
 	outputs := m["outputs"].([]interface{})
 	artifacts := make([]*persist.ArtifactProperties, len(outputs))
 	for i, output := range outputs {
-		artifacts[i] = artifactPropsFromJson(output, getFileID)
+		artifacts[i] = artifactPropsFromJson(output, func(filename string) (int, error) {
+			var fullPath string
+			if path.IsAbs(filename) {
+				fullPath = filename
+			} else {
+				fullPath = path.Join(workDir, filename)
+			}
+
+			log.Printf("path: %s", filename)
+			log.Printf("workDir: %s", workDir)
+			log.Printf("fullPath: %s", fullPath)
+			return getFileID(fullPath)
+		})
 	}
 
 	return artifacts, nil

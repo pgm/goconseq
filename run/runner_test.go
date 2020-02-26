@@ -226,8 +226,10 @@ func TestRun3RuleChain(t *testing.T) {
 	db.Close()
 }
 
-func setupLocalExec(config *model.Config, stateDir string) {
-	config.Executors[model.DefaultExecutorName] = &executor.LocalExec{JobDir: stateDir}
+func setupLocalExec(config *model.Config, stateDir string) *executor.LocalExec {
+	e := &executor.LocalExec{JobDir: stateDir}
+	config.Executors[model.DefaultExecutorName] = e
+	return e
 }
 
 func TestConflictingOutputs(t *testing.T) {
@@ -375,7 +377,6 @@ func TestRunChangedRules(t *testing.T) {
 	db.Close()
 }
 
-//broken because we don't hash rules. We only detect rule name changes
 func TestInitialArtifact(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", t.Name())
 	if err != nil {
@@ -429,13 +430,51 @@ func writeFile(filename string, content string) {
 
 }
 
-func TestFileRef(t *testing.T) {
+func TestOutputFileRef(t *testing.T) {
 	stateDir, err := ioutil.TempDir("", t.Name())
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("stateDir: %s", stateDir)
-	//	defer os.RemoveAll(stateDir)
+	defer os.RemoveAll(stateDir)
+
+	db, config := parseRules(stateDir, `
+		rule x:
+			outputs: {'type': 'file', 'filename': {'$filename': 'out'}}
+			run "touch out"	
+	`)
+	setupLocalExec(config, stateDir)
+
+	stats := run(context.Background(), config, db)
+
+	assert.Equal(t, 1, stats.SuccessfulCompletions)
+
+	file := db.FindArtifacts(map[string]string{"type": "file"})
+	assert.Equal(t, 1, len(file))
+	fileID := file[0].Properties.Files["filename"]
+	assert.Greater(t, fileID, 0)
+}
+
+type LocalFileLocalizer struct {
+	db *persist.DB
+}
+
+func (m *LocalFileLocalizer) EnsureLocallyAccessible(fileID int) (string, error) {
+	file := m.db.GetFile(fileID)
+	return file.LocalPath, nil
+}
+
+func (m *LocalFileLocalizer) EnsureGloballyAccessible(fileID int) (string, error) {
+	panic("unimp")
+}
+
+func TestInputFileRef(t *testing.T) {
+	stateDir, err := ioutil.TempDir("", t.Name())
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("stateDir: %s", stateDir)
+	defer os.RemoveAll(stateDir)
 
 	// create sample file
 	inputFileName := path.Join(stateDir, "sample")
@@ -449,7 +488,8 @@ func TestFileRef(t *testing.T) {
 	`, inputFileName)
 
 	db, config := parseRules(stateDir, rules)
-	setupLocalExec(config, stateDir)
+	e := setupLocalExec(config, stateDir)
+	e.Files = &LocalFileLocalizer{db}
 
 	stats := run(context.Background(), config, db)
 	assert.Equal(t, 2, stats.Executions)
@@ -476,7 +516,8 @@ func TestFileRef(t *testing.T) {
 	writeFile(inputFileName, "{\"outputs\": [{\"type\": \"fromfile2\"}]}")
 	db, config = parseRules(stateDir, rules)
 
-	setupLocalExec(config, stateDir)
+	e = setupLocalExec(config, stateDir)
+	e.Files = &LocalFileLocalizer{db}
 	stats = run(context.Background(), config, db)
 	assert.Equal(t, 2, stats.Executions)
 	assert.Equal(t, 2, stats.SuccessfulCompletions)

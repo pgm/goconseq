@@ -11,20 +11,46 @@ type Statement interface {
 	Eval(config *model.Config) error
 }
 
+type UnresolvedOutputProperty struct {
+	Name       string
+	IsFilename bool
+	Value      string
+}
+
+type RuleStatementOutput struct {
+	Properties []UnresolvedOutputProperty
+}
+
 type RuleStatement struct {
 	Name              string
 	Inputs            map[string]*model.InputQuery
-	Outputs           []model.RuleOutput
+	Outputs           []RuleStatementOutput
 	ExecutorName      string
 	RequiredResources map[string]float64
 	RunStatements     []*model.RunWithStatement
 }
 
+func makeRuleOutput(output RuleStatementOutput) model.RuleOutput {
+	properties := make([]model.RuleOutputProperty, len(output.Properties))
+	for i, property := range output.Properties {
+		properties[i] = model.RuleOutputProperty{Name: property.Name, Value: property.Value, IsFilename: property.IsFilename}
+	}
+	return model.RuleOutput{Properties: properties}
+}
+
 func (s *RuleStatement) Eval(config *model.Config) error {
 	query := persist.QueryFromMaps(s.Inputs)
+	outputs := make([]model.RuleOutput, len(s.Outputs))
+	if s.Outputs == nil {
+		outputs = nil
+	} else {
+		for i, output := range s.Outputs {
+			outputs[i] = makeRuleOutput(output)
+		}
+	}
 	config.AddRule(&model.Rule{Name: s.Name,
 		Query:             query,
-		Outputs:           s.Outputs,
+		Outputs:           outputs,
 		ExecutorName:      s.ExecutorName,
 		RequiredResources: s.RequiredResources,
 		RunStatements:     s.RunStatements})
@@ -45,7 +71,7 @@ func (s *LetStatement) Eval(config *model.Config) error {
 }
 
 type ArtifactStatement struct {
-	Artifact map[string]string
+	Artifact map[string]model.ArtifactValue
 }
 
 func (s *ArtifactStatement) Eval(config *model.Config) error {

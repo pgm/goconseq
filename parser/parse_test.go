@@ -29,7 +29,7 @@ func TestParseAddIfMissing(t *testing.T) {
 	stmts.Eval(config)
 	assert.Equal(t, 1, len(config.Artifacts))
 	artifact := config.Artifacts[0]
-	assert.Equal(t, artifact["x"], "b")
+	assert.Equal(t, artifact["x"], model.ArtifactValue{"b", false})
 }
 func TestParseRule(t *testing.T) {
 	log.Printf("%v", &antlr.Set{})
@@ -55,7 +55,7 @@ func TestParseFailure(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestParseRuleWithFileRef(t *testing.T) {
+func TestParseRuleWithFilenameInInputs(t *testing.T) {
 	log.Printf("%v", &antlr.Set{})
 	stmts, err := ParseString("rule x: inputs: a=filename('sample') outputs: {'type': 'out'}")
 	assert.Nil(t, err)
@@ -63,5 +63,21 @@ func TestParseRuleWithFileRef(t *testing.T) {
 	stmt := stmts.Statements[0].(*RuleStatement)
 	assert.Equal(t, "x", stmt.Name)
 	assert.Equal(t, "$filename_ref", stmt.Inputs["a"].Properties["type"])
-	assert.Equal(t, "sample", stmt.Inputs["a"].Properties["filename"])
+	assert.Equal(t, "sample", stmt.Inputs["a"].Properties["name"])
+	astmt := stmts.Statements[1].(*ArtifactStatement)
+	assert.True(t, astmt.Artifact["filename"].IsFilename)
+	assert.False(t, astmt.Artifact["type"].IsFilename)
+}
+
+func TestParseRuleWithFileRefInOutputs(t *testing.T) {
+	log.Printf("%v", &antlr.Set{})
+	stmts, err := ParseString("rule x: outputs: { 'filename': {'$filename': 'x'}}")
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(stmts.Statements))
+	stmt := stmts.Statements[0].(*RuleStatement)
+	assert.Equal(t, "x", stmt.Name)
+	fileProp := stmt.Outputs[0].Properties[0]
+	assert.Equal(t, "x", fileProp.Value)
+	assert.Equal(t, "filename", fileProp.Name)
+	assert.True(t, fileProp.IsFilename)
 }

@@ -2,13 +2,18 @@ package model
 
 const FileRefType = "$filename_ref"
 
+type ArtifactValue struct {
+	Value      string
+	IsFilename bool
+}
+
 type Config struct {
 	Rules map[string]*Rule
 	Vars  map[string]string
 	//	Artifacts []model.PropPairs
 	Executors  map[string]Executor
 	StateDir   string
-	Artifacts  []map[string]string
+	Artifacts  []map[string]ArtifactValue
 	ReplayOnly bool
 }
 

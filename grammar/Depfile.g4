@@ -17,30 +17,36 @@ input_bindings: 'inputs' ':' binding (',' binding)*;
 
 filename_ref: 'filename' '(' quoted_string ')';
 
-binding: IDENTIFIER '=' ALL? ( json_obj | filename_ref);
+binding: IDENTIFIER '=' ALL? ( artifact_template | filename_ref);
 
-output: 'outputs' ':' json_obj (',' json_obj)*;
+output: 'outputs' ':' artifact_def (',' artifact_def)*;
 
 var_stmt: LET IDENTIFIER EQUALS quoted_string;
 
 quoted_string: LONG_STRING | SHORT_STRING;
 
-add_if_missing: 'add-if-missing' json_obj;
+add_if_missing: 'add-if-missing' artifact_def;
 
-json_obj:
-	'{' json_name_value_pair (',' json_name_value_pair)* ','? '}';
+artifact_template:
+	'{' artifact_template_pair (',' artifact_template_pair)* ','? '}';
 
-json_name_value_pair: quoted_string ':' json_value;
+artifact_template_pair: quoted_string ':' quoted_string;
 
-json_value: quoted_string; //| json_obj | json_array;
+artifact_def:
+	'{' artifact_def_pair (',' artifact_def_pair)* ','? '}';
 
-//json_array: '[' json_value ( ',' json_value)* ','? ']' | '[' ']';
+artifact_def_pair: quoted_string ':' artifact_def_pair_value;
+
+artifact_def_pair_value:
+	quoted_string
+	| '{' quoted_string ':' quoted_string '}';
+
+json_value: quoted_string;
 
 ////// lexer
 
 LET: 'let';
 ALL: 'all';
-
 EQUALS: '=';
 
 // different flavors of strings 

@@ -110,18 +110,18 @@ func (r *Rule) Hash() string {
 }
 
 type RuleOutputProperty struct {
-	Name   string
-	FileID int
-	Value  string
+	Name       string
+	IsFilename bool
+	Value      string
 }
 
-func (p *RuleOutputProperty) HasFileID() bool {
-	return p.FileID != 0
-}
+// func (p *RuleOutputProperty) HasFileID() bool {
+// 	return p.FileID != 0
+// }
 
-func (p *RuleOutputProperty) HasValue() bool {
-	return !p.HasFileID()
-}
+// func (p *RuleOutputProperty) HasValue() bool {
+// 	return !p.HasFileID()
+// }
 
 type RuleOutput struct {
 	Properties []RuleOutputProperty
@@ -131,8 +131,8 @@ func (ro *RuleOutput) AsDicts() []interface{} {
 	nv := make([]interface{}, len(ro.Properties))
 	for i := range nv {
 		nv[i] = map[string]interface{}{"Name": ro.Properties[i].Name,
-			"FileID": ro.Properties[i].FileID,
-			"Value":  ro.Properties[i].Value}
+			"IsFilename": ro.Properties[i].IsFilename,
+			"Value":      ro.Properties[i].Value}
 	}
 	return nv
 }
@@ -140,11 +140,9 @@ func (ro *RuleOutput) AsDicts() []interface{} {
 func (ro *RuleOutput) AddPropertyString(Name string, Value string) {
 	ro.Properties = append(ro.Properties, RuleOutputProperty{Name: Name, Value: Value})
 }
-func (ro *RuleOutput) AddPropertyFileID(Name string, FileID int) {
-	if FileID == 0 {
-		panic("invalid fileid")
-	}
-	ro.Properties = append(ro.Properties, RuleOutputProperty{Name: Name, FileID: FileID})
+
+func (ro *RuleOutput) AddPropertyFilename(Name string, Value string) {
+	ro.Properties = append(ro.Properties, RuleOutputProperty{Name: Name, Value: Value, IsFilename: true})
 }
 
 func (r *Rule) GetQueryProps() []*graph.PropertiesTemplate {
@@ -161,9 +159,7 @@ func (r *Rule) GetOutputProps() []*graph.PropertiesTemplate {
 		for _, output := range r.Outputs {
 			template := graph.PropertiesTemplate{}
 			for _, prop := range output.Properties {
-				if prop.HasValue() {
-					template.AddConstantProperty(prop.Name, prop.Value)
-				}
+				template.AddConstantProperty(prop.Name, prop.Value)
 			}
 			templates = append(templates, &template)
 		}

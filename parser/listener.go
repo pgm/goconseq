@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"log"
+
 	"github.com/pgm/goconseq/model"
 	"github.com/pgm/goconseq/parser/antlrparser"
 )
@@ -23,12 +25,30 @@ func (l *Listener) PopString() string {
 	return l.Pop().(string)
 }
 
+func (l *Listener) AssertStackEmpty() {
+	if len(l.Values) > 0 {
+		panic("Internal parser error: stack not empty")
+	}
+}
+
 func (l *Listener) PopQuery() *model.InputQuery {
 	return l.Pop().(*model.InputQuery)
 }
 
 func (l *Listener) PopStrMap() map[string]string {
 	return l.Pop().(map[string]string)
+}
+
+func (l *Listener) PopMap() map[string]interface{} {
+	return l.Pop().(map[string]interface{})
+}
+
+func (l *Listener) PopArtifact() map[string]model.ArtifactValue {
+	return l.Pop().(map[string]model.ArtifactValue)
+}
+
+func (l *Listener) PopArtifactValue() model.ArtifactValue {
+	return l.Pop().(model.ArtifactValue)
 }
 
 func (l *Listener) Push(value interface{}) {
@@ -82,7 +102,7 @@ func (l *Listener) ExitQuoted_string(ctx *antlrparser.Quoted_stringContext) {
 	}
 }
 
-func (l *Listener) ExitJson_name_value_pair(ctx *antlrparser.Json_name_value_pairContext) {
+func (l *Listener) ExitArtifact_template_pair(ctx *antlrparser.Artifact_template_pairContext) {
 	// pop and push the args to sanity check TOS
 	value := l.PopString()
 	name := l.PopString()
@@ -91,13 +111,48 @@ func (l *Listener) ExitJson_name_value_pair(ctx *antlrparser.Json_name_value_pai
 	l.Push(value)
 }
 
-func (l *Listener) ExitJson_obj(ctx *antlrparser.Json_objContext) {
+func (l *Listener) ExitArtifact_def_pair_value(ctx *antlrparser.Artifact_def_pair_valueContext) {
+	if len(ctx.AllQuoted_string()) == 1 {
+		// string on stack, push/pop it to check the type
+		value := l.PopString()
+		l.Push(model.ArtifactValue{Value: value})
+	} else if len(ctx.AllQuoted_string()) == 2 {
+		// this is probably "$filename" = filename,
+		value := l.PopString()
+		name := l.PopString()
+		if name != "$filename" {
+			log.Fatalf("expected $filename in Artifact_def_pair_value but got %s", name)
+		}
+		l.Push(model.ArtifactValue{Value: value, IsFilename: true})
+	} else {
+		panic("invalid Artifact_def_pair_value")
+	}
+}
+
+func (l *Listener) ExitArtifact_template(ctx *antlrparser.Artifact_templateContext) {
 	obj := make(map[string]string)
 	i := 0
 	for {
-		pair := ctx.Json_name_value_pair(i)
+		pair := ctx.Artifact_template_pair(i)
 		if pair != nil {
 			value := l.PopString()
+			name := l.PopString()
+			obj[name] = value
+		} else {
+			break
+		}
+		i++
+	}
+	l.Push(obj)
+}
+
+func (l *Listener) ExitArtifact_def(ctx *antlrparser.Artifact_defContext) {
+	obj := make(map[string]model.ArtifactValue)
+	i := 0
+	for {
+		pair := ctx.Artifact_def_pair(i)
+		if pair != nil {
+			value := l.PopArtifactValue()
 			name := l.PopString()
 			obj[name] = value
 		} else {
@@ -125,9 +180,12 @@ func (l *Listener) ExitVar_stmt(ctx *antlrparser.Var_stmtContext) {
 	l.Statements.Add(&LetStatement{Name: name, Value: value})
 }
 
-func mapFileRefArtifact(filename string) (map[string]string, map[string]string) {
-	fileQuery := map[string]string{"filename": filename, "type": model.FileRefType}
-	fileArtifact := map[string]string{"filename": filename, "type": model.FileRefType}
+func mapFileRefArtifact(filename string) (map[string]string, map[string]model.ArtifactValue) {
+	fileQuery := map[string]string{"name": filename, "type": model.FileRefType}
+	fileArtifact := map[string]model.ArtifactValue{
+		"name":     model.ArtifactValue{Value: filename},
+		"filename": model.ArtifactValue{Value: filename, IsFilename: true},
+		"type":     model.ArtifactValue{Value: model.FileRefType}}
 
 	return fileQuery, fileArtifact
 }
@@ -137,7 +195,7 @@ func (l *Listener) ExitBinding(ctx *antlrparser.BindingContext) {
 
 	isAll := ctx.ALL() != nil
 	name := ctx.IDENTIFIER().GetText()
-	if ctx.Json_obj() != nil {
+	if ctx.Artifact_template() != nil {
 		value = l.PopStrMap()
 	} else {
 		// if not a json obj, then this is a filename ref
@@ -146,7 +204,7 @@ func (l *Listener) ExitBinding(ctx *antlrparser.BindingContext) {
 		}
 		filename := l.PopString()
 
-		var fileArtifact map[string]string
+		var fileArtifact map[string]model.ArtifactValue
 		// query for finding file by filename
 		value, fileArtifact = mapFileRefArtifact(filename)
 		l.Statements.Add(&ArtifactStatement{fileArtifact})
@@ -168,11 +226,11 @@ func (l *Listener) ExitInput_bindings(ctx *antlrparser.Input_bindingsContext) {
 }
 
 func (l *Listener) ExitOutput(ctx *antlrparser.OutputContext) {
-	for _ = range ctx.AllJson_obj() {
-		outputAsMap := l.PopStrMap()
-		output := model.RuleOutput{}
-		for k, v := range outputAsMap {
-			output.AddPropertyString(k, v)
+	for _ = range ctx.AllArtifact_def() {
+		outputArtifact := l.PopArtifact()
+		output := RuleStatementOutput{}
+		for k, v := range outputArtifact {
+			output.Properties = append(output.Properties, UnresolvedOutputProperty{Name: k, IsFilename: v.IsFilename, Value: v.Value})
 		}
 		l.CurRule.Outputs = append(l.CurRule.Outputs, output)
 	}
@@ -185,6 +243,6 @@ func (l *Listener) ExitFilename_ref(ctx *antlrparser.Filename_refContext) {
 }
 
 func (l *Listener) ExitAdd_if_missing(ctx *antlrparser.Add_if_missingContext) {
-	artifact := l.PopStrMap()
+	artifact := l.PopArtifact()
 	l.Statements.Add(&ArtifactStatement{artifact})
 }

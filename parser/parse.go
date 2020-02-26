@@ -104,6 +104,7 @@ func parseCharStream(is antlr.CharStream) (*Statements, error) {
 	statements := Statements{}
 	l := Listener{Statements: &statements}
 	antlr.ParseTreeWalkerDefault.Walk(&l, tree)
+	l.AssertStackEmpty()
 
 	return &statements, nil
 }

@@ -566,23 +566,22 @@ func parseFile(config *model.Config, filename string) error {
 	return nil
 }
 
-func ReplayAndExport(stateDir string, filename string) (graph *graph.Graph, artifacts []*persist.Artifact, applications []*persist.AppliedRule, err error) {
+func ReplayAndExport(stateDir string, filename string) (graph *graph.Graph, db *persist.DB, err error) {
 	config := model.NewConfig()
 	// config.ReplayOnly = true
 	config.StateDir = stateDir
 
-	db := persist.NewDB(stateDir)
+	db = persist.NewDB(stateDir)
 	db.DisableUpdates()
 
 	err = parseFile(config, filename)
 	if err != nil {
-		return nil, nil, nil, err
+		db.Close()
+		return nil, nil, err
 	}
 
 	graph, _ = runAndGetGraph(context.Background(), config, db)
-	artifacts = db.FindArtifacts(make(map[string]string))
-	applications = db.FindAllAppliedRules()
-	return graph, artifacts, applications, nil
+	return graph, db, nil
 }
 
 func RunRulesInFile(stateDir string, filename string) (*RunStats, error) {

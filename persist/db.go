@@ -163,7 +163,7 @@ func (db *DB) AddAppliedRuleToCurrent(ID int) {
 
 func (db *DB) DumpArtifacts() {
 	for i, a := range db.currentArtifacts {
-		fmt.Printf("artifact %d: %v", i, a.Properties.ToStrMap())
+		fmt.Printf("artifact %d: %v", i, a.Properties.ToStrMap(nil))
 	}
 }
 

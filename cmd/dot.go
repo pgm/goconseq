@@ -14,10 +14,11 @@ var (
 		Use:   "dot",
 		Short: "export dot graph",
 		Run: func(cmd *cobra.Command, args []string) {
-			graph, _, _, err := run.ReplayAndExport(stateDir, args[0])
+			graph, db, err := run.ReplayAndExport(stateDir, args[0])
 			if err != nil {
 				log.Fatalf("%s", err)
 			}
+			db.Close()
 			if graph == nil {
 				panic("nil graph")
 			}

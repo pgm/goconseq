@@ -18,13 +18,18 @@ type Artifact struct {
 	Properties *ArtifactProperties
 }
 
-func (ap *ArtifactProperties) ToStrMap() map[string]string {
+func (ap *ArtifactProperties) ToStrMap(fmtFile func(fileID int) string) map[string]string {
+	if fmtFile == nil {
+		fmtFile = func(fileID int) string {
+			return fmt.Sprintf("<file %d>", fileID)
+		}
+	}
 	result := make(map[string]string)
 	for k, v := range ap.Strings {
 		result[k] = v
 	}
 	for k, v := range ap.Files {
-		result[k] = fmt.Sprintf("<file %d>", v)
+		result[k] = fmtFile(v)
 	}
 	return result
 }

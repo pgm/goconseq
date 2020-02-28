@@ -12,9 +12,7 @@ before_install:
 install:
 - dep ensure
 script:
-- pwd
-- ls -l
-- go test -v ./...
+- go test ./...
 - bash build.sh
 deploy:
   provider: gcs

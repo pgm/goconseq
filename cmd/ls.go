@@ -24,7 +24,7 @@ func parseQuery(filters []string) (map[string]string, error) {
 	for _, filter := range filters {
 		parts := filterExp.FindStringSubmatch(filter)
 		if parts == nil {
-			return nil, fmt.Errorf("Could not parse \"%s\" as a filter")
+			return nil, fmt.Errorf("Could not parse \"%s\" as a filter", filter)
 		}
 		query[parts[1]] = parts[2]
 	}

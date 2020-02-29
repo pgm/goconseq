@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
@@ -41,6 +42,8 @@ var (
 		Short: "List artifacts",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			log.SetOutput(ioutil.Discard)
+
 			conseqFile := args[0]
 			query, err := parseQuery(args[1:])
 

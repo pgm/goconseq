@@ -77,7 +77,7 @@ func GetPendingRuleApplications(db *persist.DB,
 	} else {
 		r1 := query.ExecuteQuery(db)
 		log.Printf("Executing query for %s: %v returned %d rows", name, query.AsDict(), len(r1))
-		db.DumpArtifacts()
+		// db.DumpArtifacts()
 		rows = make([]*persist.Bindings, len(r1))
 		for i, r1v := range r1 {
 			rows[i] = r1v.(*persist.Bindings)

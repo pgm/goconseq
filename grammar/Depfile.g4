@@ -52,11 +52,11 @@ EQUALS: '=';
 // different flavors of strings 
 SHORT_STRING:
 	'\'' (STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '\''
-	| '"' ( STRING_ESCAPE_SEQ | ~[\\\r\n\f'])* '"';
+	| '"' ( STRING_ESCAPE_SEQ | ~[\\\r\n\f"])* '"';
 
 LONG_STRING:
-	'\'\'\'' LONG_STRING_ITEM*? '\'\'\''
-	| '"""' LONG_STRING_ITEM*? '"""';
+	'\'\'\'' LONG_STRING_ITEM* '\'\'\''
+	| '"""' LONG_STRING_ITEM* '"""';
 
 fragment LONG_STRING_ITEM: LONG_STRING_CHAR | STRING_ESCAPE_SEQ;
 

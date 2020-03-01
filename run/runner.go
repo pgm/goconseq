@@ -96,7 +96,12 @@ func GetPendingRuleApplications(db *persist.DB,
 		} else if !replayOnly {
 			// this has never run, add it to our list of things to run
 			//			log.Printf("never run and replayOnly = %v", replayOnly)
-			pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs})
+			if replayOnly {
+				log.Printf("Warning: found new execution of %s, but we're only replaying so ignoring", name)
+			} else {
+				log.Printf("Needs new execution of %s", name)
+				pending = append(pending, PendingRuleApplication{name: name, hash: hash, inputs: inputs})
+			}
 		}
 	}
 
@@ -568,7 +573,7 @@ func parseFile(config *model.Config, filename string) error {
 
 func ReplayAndExport(stateDir string, filename string) (graph *graph.Graph, db *persist.DB, err error) {
 	config := model.NewConfig()
-	// config.ReplayOnly = true
+	config.ReplayOnly = true
 	config.StateDir = stateDir
 
 	db = persist.NewDB(stateDir)

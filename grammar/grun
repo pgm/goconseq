@@ -1,3 +1,11 @@
 #!/bin/bash
-exec java -Xmx500M -cp "./antlr-4.7.2-complete.jar:$CLASSPATH" org.antlr.v4.gui.TestRig "$@"
+set -ex
+
+mkdir -p gtest
+cd gtest
+cp ../Depfile.g4 .
+java -jar ../antlr-4.7.2-complete.jar Depfile.g4
+export CLASSPATH=../antlr-4.7.2-complete.jar
+javac Depfile*.java
+exec java -Xmx500M -cp ".:$CLASSPATH" org.antlr.v4.gui.TestRig "$@"
 

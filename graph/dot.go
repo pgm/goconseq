@@ -26,7 +26,11 @@ func (g *Graph) PrintGraph(writer io.Writer) {
 		fmt.Fprintf(writer, "rule_%x [label=\"%s\"];\n", ruleToID[r], r.name)
 	}
 	for a := range artifactToID {
-		fmt.Fprintf(writer, "artifact_%x [label=\"%s\", shape=box];\n", artifactToID[a], "artifact")
+		typeValue := a.props.Get("type")
+		if typeValue == "" {
+			typeValue = "artifact"
+		}
+		fmt.Fprintf(writer, "artifact_%x [label=\"%s\", shape=box];\n", artifactToID[a], typeValue)
 	}
 
 	// now edges

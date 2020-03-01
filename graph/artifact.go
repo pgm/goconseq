@@ -13,6 +13,15 @@ type PropertiesTemplate struct {
 	additionalProps map[string]bool
 }
 
+func (pt *PropertiesTemplate) Get(name string) string {
+	for k, _ := range pt.constProps {
+		if k.Name == name {
+			return k.Value
+		}
+	}
+	return ""
+}
+
 type artifact struct {
 	props      *PropertiesTemplate
 	consumedBy []*Rule

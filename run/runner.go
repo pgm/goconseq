@@ -399,6 +399,7 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 
 		var failureMessage string
 		var outputs []*persist.ArtifactProperties
+		var failureLogs []*model.NameValuePair
 
 		if success {
 			// attempt to parse the results
@@ -419,10 +420,10 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 			}
 		} else {
 			failureMessage = completionState.FailureMessage
+			failureLogs = completionState.FailureLogs
 		}
 
 		if success {
-
 			// write all of the artifacts to the DB
 			outputArtifacts := make([]*persist.Artifact, len(outputs))
 			log.Printf("Completed %s", running[ruleApplicationID])
@@ -456,6 +457,18 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 			stats.FailedCompletions++
 
 			log.Printf("Error: %s", failureMessage)
+			for _, failureLog := range failureLogs {
+				tail, err := readTail(failureLog.Value, 20)
+				if err == nil {
+					if tail == "" {
+						fmt.Printf("Log of %s (%s) was empty\n", failureLog.Name, failureLog.Value)
+					} else {
+						fmt.Printf("Showing last 20 lines of %s (%s):\n%s\n", failureLog.Name, failureLog.Value, tail)
+					}
+				} else {
+					fmt.Printf("Could not read %s (%s): %s\n", failureLog.Name, failureLog.Value, err)
+				}
+			}
 
 			err := db.DeleteAppliedRule(ruleApplicationID)
 			if err != nil {
@@ -465,6 +478,43 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 	}
 
 	return &stats
+}
+
+// only attempt to read 1MB at most
+const MaxTailSize = 1024 * 1024
+
+func readTail(filename string, maxLines int) (string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	// find offset/readsize so we'll read at most MAX_TAIL_SIZE
+	eofOffset, err := f.Seek(0, 2)
+	var readSize int64
+	if eofOffset > MaxTailSize {
+		readSize = MaxTailSize
+	} else {
+		readSize = eofOffset
+	}
+
+	// allocate buffer and read
+	buf := make([]byte, readSize)
+	n, err := f.ReadAt(buf, eofOffset-readSize)
+	if err != nil {
+		return "", err
+	}
+	buf = buf[:n]
+
+	// break into lines and take the max number of lines
+	lines := strings.Split(string(buf), "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+
+	// return this as a single string
+	return strings.Join(lines, "\n"), nil
 }
 
 func startExec(context context.Context, config *model.Config, localPathLookup func(fileID int) string, id int, name string, inputs *persist.Bindings, listenerUpdates chan *Update) string {

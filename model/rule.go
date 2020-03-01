@@ -14,8 +14,8 @@ type InputQuery struct {
 }
 
 type RunWithStatement struct {
-	Script     string
 	Executable string
+	Script     string
 }
 
 type TemplateProperty struct {

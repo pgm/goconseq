@@ -37,6 +37,7 @@ type LocalExecBuilder struct {
 }
 
 type LocalChildProcess struct {
+	workDir string
 	process *os.Process
 }
 
@@ -44,21 +45,27 @@ func (p *LocalChildProcess) Wait(listener model.Listener) {
 	listener.UpdateStatus("Executing")
 
 	// attempt to wait directly, but this will fail if we're not the parent process
-	p.process.Wait()
+	state, err := p.process.Wait()
 
-	// for {
-	// 	err := p.process.Signal(syscall.Signal(0))
-	// 	if err == nil {
-	// 		// the process still exists and therefore is running
-	// 	} else {
-	// 		break
-	// 	}
+	if err != nil {
+		panic(err)
+	}
 
-	// 	time.Sleep()
-	// }
+	rusage := state.SysUsage().(*syscall.Rusage)
+	maxRSSInMB := float64(rusage.Maxrss) / (1024 * 1024) // convert to MB
+	utime := float64(rusage.Utime.Sec) + (float64(rusage.Utime.Usec) / 1000000)
+	stime := float64(rusage.Stime.Sec) + (float64(rusage.Stime.Usec) / 1000000)
+	log.Printf("%s: PID %d terminated with exit code %d, max RSS: %.1f (MB), utime: %.1f (sec), stime: %.1f (sec)", p.workDir, p.process.Pid, state.ExitCode(), maxRSSInMB, utime, stime)
 
-	log.Printf("todo: implement failure check")
-	listener.Completed(&model.CompletionState{Success: true})
+	if state.Success() {
+		listener.Completed(&model.CompletionState{Success: true})
+	} else {
+		logs := []*model.NameValuePair{&model.NameValuePair{Name: "stdout", Value: p.workDir + "/stdout.txt"},
+			&model.NameValuePair{Name: "stderr", Value: p.workDir + "/stderr.txt"}}
+		listener.Completed(&model.CompletionState{Success: false,
+			FailureMessage: fmt.Sprintf("Exit code was non-zero: %d", state.ExitCode()),
+			FailureLogs:    logs})
+	}
 }
 
 type LocalOtherProcess struct {
@@ -161,6 +168,7 @@ func (e *LocalExecBuilder) Start(context context.Context) (model.Execution, erro
 	}
 
 	return &LocalChildProcess{
+		workDir: e.workDir,
 		process: cmd.Process}, nil
 }
 

@@ -81,13 +81,14 @@ func (l *Listener) ExitRule_declaration(ctx *antlrparser.Rule_declarationContext
 }
 
 func (l *Listener) ExitRun_statement(ctx *antlrparser.Run_statementContext) {
-	executable := l.PopString()
 	script := ""
 
 	hasScript := ctx.Quoted_string(1) != nil
 	if hasScript {
 		script = l.PopString()
 	}
+
+	executable := l.PopString()
 
 	l.CurRule.RunStatements = append(l.CurRule.RunStatements, &model.RunWithStatement{Executable: executable, Script: script})
 }

@@ -32,6 +32,8 @@ artifact_template:
 
 artifact_template_pair: quoted_string ':' quoted_string;
 
+result_outputs: '[' artifact_def (',' artifact_def)* ','? ']';
+
 artifact_def:
 	'{' artifact_def_pair (',' artifact_def_pair)* ','? '}';
 

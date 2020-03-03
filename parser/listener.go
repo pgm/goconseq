@@ -112,6 +112,23 @@ func (l *Listener) ExitArtifact_template_pair(ctx *antlrparser.Artifact_template
 	l.Push(value)
 }
 
+func (l *Listener) ExitArtifact_template(ctx *antlrparser.Artifact_templateContext) {
+	obj := make(map[string]string)
+	i := 0
+	for {
+		pair := ctx.Artifact_template_pair(i)
+		if pair != nil {
+			value := l.PopString()
+			name := l.PopString()
+			obj[name] = value
+		} else {
+			break
+		}
+		i++
+	}
+	l.Push(obj)
+}
+
 func (l *Listener) ExitArtifact_def_pair_value(ctx *antlrparser.Artifact_def_pair_valueContext) {
 	if len(ctx.AllQuoted_string()) == 1 {
 		// string on stack, push/pop it to check the type
@@ -128,23 +145,6 @@ func (l *Listener) ExitArtifact_def_pair_value(ctx *antlrparser.Artifact_def_pai
 	} else {
 		panic("invalid Artifact_def_pair_value")
 	}
-}
-
-func (l *Listener) ExitArtifact_template(ctx *antlrparser.Artifact_templateContext) {
-	obj := make(map[string]string)
-	i := 0
-	for {
-		pair := ctx.Artifact_template_pair(i)
-		if pair != nil {
-			value := l.PopString()
-			name := l.PopString()
-			obj[name] = value
-		} else {
-			break
-		}
-		i++
-	}
-	l.Push(obj)
 }
 
 func (l *Listener) ExitArtifact_def(ctx *antlrparser.Artifact_defContext) {
@@ -235,6 +235,15 @@ func (l *Listener) ExitOutput(ctx *antlrparser.OutputContext) {
 		}
 		l.CurRule.Outputs = append(l.CurRule.Outputs, output)
 	}
+}
+
+func (l *Listener) ExitResult_outputs(ctx *antlrparser.Result_outputsContext) {
+	outputs := make([]map[string]model.ArtifactValue, len(ctx.AllArtifact_def()))
+	for i, _ := range ctx.AllArtifact_def() {
+		output := l.PopArtifact()
+		outputs[i] = output
+	}
+	l.Push(outputs)
 }
 
 func (l *Listener) ExitFilename_ref(ctx *antlrparser.Filename_refContext) {

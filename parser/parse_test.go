@@ -20,6 +20,12 @@ func TestParseLetStatement(t *testing.T) {
 	assert.Equal(t, config.Vars["x"], "a")
 }
 
+func TestParseResultOutputs(t *testing.T) {
+	outputs, err := parseResultsCharStream(antlr.NewInputStream(`[{"a": "b"}, {"c": {"$filename": "d"}}]`))
+	assert.Nil(t, err)
+	assert.Equal(t, len(outputs), 2)
+}
+
 func TestParseAddIfMissing(t *testing.T) {
 	log.Printf("%v", &antlr.Set{})
 	stmts, err := ParseString("add-if-missing {'x': 'b'}")

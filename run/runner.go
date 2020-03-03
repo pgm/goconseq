@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -404,10 +403,11 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 		if success {
 			// attempt to parse the results
 			var err error
-			outputs, err = readResultOutputs(db.GetWorkDir(ruleApplicationID), func(filename string) (int, error) {
+			workDir := db.GetWorkDir(ruleApplicationID)
+			outputs, err = readResultOutputs(workDir, func(filename string) (int, error) {
 				sha256, err := computeSha256(filename)
 				if err != nil {
-					return 0, fmt.Errorf("Could not read %s: %s", filename, err)
+					return 0, fmt.Errorf("Could not compute hash of %s: %s", filename, err)
 				}
 
 				fileID := db.AddFileOrFind(filename, sha256)
@@ -416,7 +416,7 @@ func innerRun(context context.Context, config *model.Config, execGraph *graph.Gr
 
 			if err != nil {
 				success = false
-				failureMessage = err.Error()
+				failureMessage = fmt.Sprintf("Could not read results.json in %s: %s", workDir, err.Error())
 			}
 		} else {
 			failureMessage = completionState.FailureMessage
@@ -540,76 +540,50 @@ func startExec(context context.Context, config *model.Config, localPathLookup fu
 	return resumeState
 }
 
-func readResultOutputs(workDir string, getFileID func(filename string) (int, error)) (Properties []*persist.ArtifactProperties, err error) {
-	data, err := readJson(path.Join(workDir, "results.json"), getFileID)
-	if err != nil {
-		return nil, err
-	}
+func readResultOutputs(workDir string, getFileID func(filename string) (int, error)) (outputs []*persist.ArtifactProperties, err error) {
 
-	// todo, add checks for each of these
-	m := data.(map[string]interface{})
-	outputs := m["outputs"].([]interface{})
-	artifacts := make([]*persist.ArtifactProperties, len(outputs))
-	for i, output := range outputs {
-		artifacts[i] = artifactPropsFromJson(output, func(filename string) (int, error) {
-			var fullPath string
-			if path.IsAbs(filename) {
-				fullPath = filename
-			} else {
-				fullPath = path.Join(workDir, filename)
-			}
-
-			log.Printf("path: %s", filename)
-			log.Printf("workDir: %s", workDir)
-			log.Printf("fullPath: %s", fullPath)
-			return getFileID(fullPath)
-		})
-	}
-
-	return artifacts, nil
-}
-
-func readJson(filename string, getFileID func(filename string) (int, error)) (interface{}, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	var data interface{}
-	err = json.Unmarshal(b, &data)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-func artifactPropsFromJson(json interface{}, getFileID func(filename string) (int, error)) *persist.ArtifactProperties {
-	jsonObj := json.(map[string]interface{})
-	artifact := persist.NewArtifactProperties()
-	for key, value := range jsonObj {
-		valueMap, ok := value.(map[string]interface{})
-		if ok {
-			filename := valueMap["$filename"].(string)
-			fileID, err := getFileID(filename)
-			if err != nil {
-				// todo: gracefully handle errors
-				panic(err)
-			}
-			// todo: check for dup key
-			artifact.Files[key] = fileID
+	absGetFileID := func(filename string) (int, error) {
+		var fullPath string
+		if path.IsAbs(filename) {
+			fullPath = filename
 		} else {
-			// todo: check for dup key
-			artifact.Strings[key] = value.(string)
+			fullPath = path.Join(workDir, filename)
 		}
+
+		log.Printf("path: %s", filename)
+		log.Printf("workDir: %s", workDir)
+		log.Printf("fullPath: %s", fullPath)
+		return getFileID(fullPath)
 	}
-	return artifact
+
+	filename := path.Join(workDir, "results.json")
+
+	parsedOutputs, err := parser.ParseResultsFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	outputs = make([]*persist.ArtifactProperties, len(parsedOutputs))
+	for i, parsedOutput := range parsedOutputs {
+		artifact := persist.NewArtifactProperties()
+		for key, value := range parsedOutput {
+			if value.IsFilename {
+				filename := value.Value
+				fileID, err := absGetFileID(filename)
+				if err != nil {
+					return nil, err
+				}
+				// todo: check for dup key
+				artifact.Files[key] = fileID
+			} else {
+				// todo: check for dup key
+				artifact.Strings[key] = value.Value
+			}
+		}
+		outputs[i] = artifact
+	}
+
+	return outputs, nil
 }
 
 func parseFile(config *model.Config, filename string) error {

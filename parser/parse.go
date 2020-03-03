@@ -3,6 +3,9 @@ package parser
 import (
 	"fmt"
 	"log"
+	"strings"
+
+	"github.com/pgm/goconseq/model"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"github.com/pgm/goconseq/parser/antlrparser"
@@ -45,6 +48,14 @@ func ParseFile(filename string) (*Statements, error) {
 		return nil, err
 	}
 	return parseCharStream(is)
+}
+
+func ParseResultsFile(filename string) ([]map[string]model.ArtifactValue, error) {
+	is, err := antlr.NewFileStream(filename)
+	if err != nil {
+		return nil, err
+	}
+	return parseResultsCharStream(is)
 }
 
 // func parseCharStream(is antlr.CharStream) (*Statements, error) {
@@ -107,4 +118,33 @@ func parseCharStream(is antlr.CharStream) (*Statements, error) {
 	l.AssertStackEmpty()
 
 	return &statements, nil
+}
+
+func parseResultsCharStream(is antlr.CharStream) ([]map[string]model.ArtifactValue, error) {
+	errors := make([]string, 0)
+
+	lexer := antlrparser.NewDepfileLexer(is)
+	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
+	p := antlrparser.NewDepfileParser(stream)
+
+	// replace error handler with custom version which collects all errors
+	p.RemoveErrorListeners()
+	p.AddErrorListener(NewCollectingErrorListener(&errors))
+
+	// perform parsing
+	tree := p.Result_outputs()
+
+	// check to see if we got any errors in course of parsing
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("%d errors: %s", len(errors), strings.Join(errors, ", "))
+	}
+
+	// if parsing was good, now try walk the CST to create statements
+	statements := Statements{}
+	l := Listener{Statements: &statements}
+	antlr.ParseTreeWalkerDefault.Walk(&l, tree)
+	artifacts := l.Pop().([]map[string]model.ArtifactValue)
+	l.AssertStackEmpty()
+
+	return artifacts, nil
 }
